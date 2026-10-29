@@ -11,7 +11,6 @@ from scipy.stats import chi2
 
 warnings.filterwarnings("ignore", category=StartingValueWarning)
 
-# main.py
 DEFAULT_CONFIG = {
     "ticker": "^GSPC",
     "start_date": "2001-01-01",
@@ -24,7 +23,6 @@ DEFAULT_CONFIG = {
     "n_boot": 10000,
 }
 
-# keep the old name as an alias so main.py's __main__ block still works
 CONFIG = DEFAULT_CONFIG
 
 

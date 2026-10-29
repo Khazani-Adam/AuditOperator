@@ -17,14 +17,9 @@ STANDARD_MODELS = {
 }
 
 
-# ============================================================
-# Per-session config + caching helpers
-# ============================================================
-
 def _cfg():
-    """Per-session config, initialized from main.CONFIG defaults."""
     if "cfg" not in st.session_state:
-        st.session_state["cfg"] = dict(CONFIG)   # copy, never mutate main.CONFIG
+        st.session_state["cfg"] = dict(CONFIG)
     return st.session_state["cfg"]
 
 
@@ -95,10 +90,6 @@ def _check_period(cfg):
     return True, None
 
 
-# ============================================================
-# Backtester
-# ============================================================
-
 def backtester(selected_standards, selected_customs_dict, progress_callback=None):
     cfg = _cfg()
 
@@ -159,10 +150,6 @@ def backtester(selected_standards, selected_customs_dict, progress_callback=None
     return df_summary, dict_outputs
 
 
-# ============================================================
-# Synthesis
-# ============================================================
-
 def afficher_synthese_comparative(df_summary):
     st.markdown("---")
     st.subheader("Synthèse : Meilleur modèle par critère d'audit")
@@ -215,10 +202,6 @@ def afficher_synthese_comparative(df_summary):
     except Exception:
         st.info("Synthèse automatique indisponible pour cette sélection.")
 
-
-# ============================================================
-# Custom model manager
-# ============================================================
 
 def gestionnaire_modeles_custom(show_checkboxes=True):
     if "custom_models" not in st.session_state:
@@ -315,10 +298,6 @@ def gestionnaire_modeles_custom(show_checkboxes=True):
     return {}
 
 
-# ============================================================
-# Comparative audit page
-# ============================================================
-
 def page_audit_comparatif():
     cfg = _cfg()
     st.title("Risk Model Comparison")
@@ -413,10 +392,6 @@ def is_valid_ticker(symbol: str) -> bool:
         return False
 
 
-# ============================================================
-# Config page
-# ============================================================
-
 def page_config():
     st.title("Configuration")
     cfg = _cfg()
@@ -461,21 +436,13 @@ def page_config():
         st.error(f"Ticker introuvable : '{symbol}'. Le ticker précédent est conservé.")
 
 
-# ============================================================
-# Single-model audit page
-# ============================================================
-
 def page_audit_unitaire():
     cfg = _cfg()
     st.title("Audit Unitaire d'un Modèle")
 
-    # ============================================================
-    # 1. SÉLECTION DU MODÈLE (Boutons Radio)
-    # ============================================================
     st.subheader("1. Sélection du modèle")
     st.caption("Sélectionnez le modèle à auditer. Les modèles custom apparaîtront ici.")
 
-    # On construit la liste des options (Standard + Custom)
     options_map = {label: code for code, label in STANDARD_MODELS.items()}
     custom_models = st.session_state.get("custom_models", {})
     for c_name in custom_models.keys():
@@ -489,18 +456,11 @@ def page_audit_unitaire():
     )
     modele_code = options_map[modele_choisi_label]
 
-    # ============================================================
-    # 2. MODÈLES CUSTOM (Uploader directement sur la page)
-    # ============================================================
     st.subheader("2. Modèles Custom")
-    # On appelle la fonction sans l'expander et sans les checkboxes
     gestionnaire_modeles_custom(show_checkboxes=False)
 
     st.markdown("---")
 
-    # ============================================================
-    # LANCEMENT DE L'AUDIT
-    # ============================================================
     if st.button("Lancer l'audit unitaire", type="primary"):
         ok, msg = _check_period(cfg)
         if not ok:
@@ -589,14 +549,10 @@ def page_audit_unitaire():
             st.pyplot(fig)
 
 
-# ============================================================
-# Main interface
-# ============================================================
-
 def afficher_interface():
     st.set_page_config(page_title="Audit Operator", layout="wide")
 
-    _cfg()   # initialize per-session config once
+    _cfg()
 
     st.sidebar.markdown("""
     <div style="padding: 8px 0 18px 0;">
@@ -629,10 +585,6 @@ def afficher_interface():
 
     st.markdown("""
     <style>
-    /* =========================================
-       AUDIT OPERATOR — INSTITUTIONAL UI
-       ========================================= */
-
     :root {
         --background: #111519;
         --sidebar: #0d1216;
@@ -647,7 +599,6 @@ def afficher_interface():
         --success: #75c9a5;
     }
 
-    /* Fond général */
     .stApp {
         background: var(--background);
         color: var(--text);
@@ -663,7 +614,6 @@ def afficher_interface():
         padding-bottom: 3rem;
     }
 
-    /* Typographie */
     html, body, [class*="css"] {
         font-family: Inter, -apple-system, BlinkMacSystemFont,
                      "Segoe UI", sans-serif;
@@ -698,7 +648,6 @@ def afficher_interface():
         font-size: 0.82rem;
     }
 
-    /* Sidebar */
     [data-testid="stSidebar"] {
         background: var(--sidebar);
         border-right: 1px solid var(--border);
@@ -717,7 +666,6 @@ def afficher_interface():
         border-color: var(--border) !important;
     }
 
-    /* Navigation radio */
     [data-testid="stSidebar"] [role="radiogroup"] {
         gap: 0.35rem;
     }
@@ -732,7 +680,6 @@ def afficher_interface():
         background: var(--surface-hover);
     }
 
-    /* Cartes et conteneurs */
     [data-testid="stVerticalBlockBorderWrapper"] {
         background: var(--surface);
         border: 1px solid var(--border) !important;
@@ -744,7 +691,6 @@ def afficher_interface():
         border-color: #43545e !important;
     }
 
-    /* Métriques */
     [data-testid="stMetric"] {
         background: var(--surface);
         border: 1px solid var(--border);
@@ -767,7 +713,6 @@ def afficher_interface():
         font-size: 0.78rem !important;
     }
 
-    /* Champs de saisie */
     .stTextInput input,
     .stNumberInput input,
     .stDateInput input,
@@ -786,7 +731,6 @@ def afficher_interface():
         box-shadow: 0 0 0 1px var(--accent) !important;
     }
 
-    /* Boutons */
     .stButton button {
         border-radius: 7px;
         border: 1px solid var(--border);
@@ -815,12 +759,10 @@ def afficher_interface():
         color: #101819;
     }
 
-    /* Cases à cocher */
     [data-testid="stCheckbox"] label {
         font-size: 0.84rem;
     }
 
-    /* Import de fichiers */
     [data-testid="stFileUploader"] section {
         background: #131a1f;
         border: 1px dashed #40505a;
@@ -836,19 +778,16 @@ def afficher_interface():
         border-radius: 6px;
     }
 
-    /* Tableaux */
     [data-testid="stDataFrame"] {
         border: 1px solid var(--border);
         border-radius: 9px;
         overflow: hidden;
     }
 
-    /* Messages */
     [data-testid="stAlert"] {
         border-radius: 8px;
     }
 
-    /* Barres de progression */
     [data-testid="stProgressBar"] > div {
         background: var(--surface-hover);
         border-radius: 99px;
@@ -859,12 +798,10 @@ def afficher_interface():
         border-radius: 99px;
     }
 
-    /* Séparateurs */
     hr {
         border-color: var(--border) !important;
     }
 
-    /* Mobile */
     @media (max-width: 768px) {
         .block-container {
             padding: 1.2rem 1rem 2rem;
