@@ -22,7 +22,7 @@ CONFIG = {
 }
 
 
-def stock_getter(ticker="AAPL", start="2001-01-01", end=None):
+def stock_getter(ticker="AAPL", start=CONFIG["start_date"], end=CONFIG["end_date"]):
     df = yf.download(ticker, start=start, end=end, auto_adjust=True)
     if isinstance(df.columns, pd.MultiIndex):
         df_prices = df["Close"][[ticker]].copy()

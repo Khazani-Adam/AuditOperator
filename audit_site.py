@@ -1,3 +1,4 @@
+import datetime
 import sys
 import time
 import matplotlib.pyplot as plt
@@ -6,6 +7,10 @@ import pandas as pd
 import streamlit as st
 from main import CONFIG, run_backtest, stock_getter
 from streamlit.web import cli as stcli
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import yfinance as yf
 
 STANDARD_MODELS = {
     "historical": "Historique (HS)",
@@ -271,10 +276,57 @@ def page_audit_comparatif():
 
             st.subheader("Tableau comparatif des métriques")
             df_display = df_summary.astype(str)
-            st.dataframe(df_display, width="stretch")
-
+            st.table(df_display)
             afficher_synthese_comparative(df_summary)
+@st.cache_data(ttl=3600, show_spinner=False)
+def is_valid_ticker(symbol: str) -> bool:
+    if not symbol:
+        return False
+    try:
+        hist = yf.Ticker(symbol).history(period="5d")
+        return not hist.empty
+    except Exception:
+        return False
 
+def page_config():
+    st.title("Configuration")
+
+    raw_start = st.text_input("Date de début de l'analyse (AAAA-MM-JJ)", str(CONFIG["start_date"]))
+    raw_end = st.text_input("Date de fin de l'analyse (AAAA-MM-JJ, ou None)", str(CONFIG["end_date"]))
+
+    try:
+        new_start = datetime.date.fromisoformat(raw_start.strip())
+        if raw_end.strip().lower() == "none":
+            new_end = None
+        else:
+            new_end = datetime.date.fromisoformat(raw_end.strip())
+    except ValueError:
+        st.error("Format invalide, utilisez AAAA-MM-JJ. Les dates précédentes sont conservées.")
+    else:
+        end_eff = new_end or datetime.date.today()
+        jours_bourse = (end_eff - new_start).days * 252 / 365
+
+        if end_eff <= new_start:
+            st.error("La date de fin doit être postérieure à la date de début. Les dates précédentes sont conservées.")
+        elif jours_bourse <= CONFIG["window_size"]:
+            st.error(
+                f"Période trop courte : ~{int(jours_bourse)} jours de bourse pour une "
+                f"fenêtre de {CONFIG['window_size']}. Les dates précédentes sont conservées."
+            )
+        else:
+            CONFIG["start_date"] = new_start
+            CONFIG["end_date"] = new_end
+            st.success("Période valide.")
+    raw = st.text_input("Stock à utiliser", CONFIG["ticker"])
+    symbol = raw.strip().upper()
+
+    if not symbol:
+        st.warning("Veuillez saisir un ticker.")
+    elif is_valid_ticker(symbol):
+        CONFIG["ticker"] = symbol
+        st.success(f"Ticker valide : {symbol}")
+    else:
+        st.error(f"Ticker introuvable : '{symbol}'. Le ticker précédent est conservé.")
 
 def page_audit_unitaire():
     st.title("Audit Unitaire d'un Modèle")
@@ -340,7 +392,7 @@ def page_audit_unitaire():
 
         st.subheader("Détail complet des résultats d'audit")
         df_display = df_summary.astype(str)
-        st.dataframe(df_display, width="stretch")
+        st.table(df_display)
 
         raw_res = dict_outputs.get(modele_choisi_label, {})
         if "var_series" in raw_res and "test_returns" in raw_res:
@@ -405,13 +457,16 @@ def afficher_interface():
 
     st.sidebar.title("Audit Operator")
     menu = st.sidebar.radio(
-        "Navigation :", ["Audit Comparatif", "Audit Unitaire"]
+        "Navigation :", ["Audit Comparatif", "Audit Unitaire", "Config"]
     )
 
     if menu == "Audit Comparatif":
         page_audit_comparatif()
     elif menu == "Audit Unitaire":
         page_audit_unitaire()
+    elif menu == "Config":
+        page_config()
+
 
 
 if __name__ == "__main__":
