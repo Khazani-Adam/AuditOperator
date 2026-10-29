@@ -161,79 +161,160 @@ def afficher_synthese_comparative(df_summary):
         st.info("Synthèse automatique indisponible pour cette sélection.")
 
 
+
 def gestionnaire_modeles_custom():
     if "custom_models" not in st.session_state:
         st.session_state["custom_models"] = {}
 
-    with st.expander("Ajouter un nouveau modèle Custom", expanded=False):
-        custom_name = st.text_input(
-            "Nom du modèle Custom :",
-            placeholder="ex: RiskMetrics_2026, Proprietary_GARCH...",
+    # Panneau d'import
+    with st.container(border=True):
+        st.markdown("### Custom Model")
+        st.caption(
+            "Import external risk series for comparison with reference models."
         )
 
-        c1, c2, c3 = st.columns(3)
+        custom_name = st.text_input(
+            "MODEL NAME",
+            placeholder="e.g. RiskMetrics_2026",
+            key="custom_model_name",
+        )
+
+        st.markdown("**INPUT SERIES**")
+
+        c1, c2, c3 = st.columns(3, gap="small")
+
         with c1:
+            st.markdown("**01 / VaR**")
             file_var = st.file_uploader(
-                "Série VaR", type=["csv", "xlsx", "parquet"], key="add_var"
+                "Import VaR series",
+                type=["csv", "xlsx", "parquet"],
+                key="add_var",
             )
+
         with c2:
+            st.markdown("**02 / Expected Shortfall**")
             file_es = st.file_uploader(
-                "Série ES", type=["csv", "xlsx", "parquet"], key="add_es"
+                "Import ES series",
+                type=["csv", "xlsx", "parquet"],
+                key="add_es",
             )
+
         with c3:
+            st.markdown("**03 / Volatility**")
             file_vol = st.file_uploader(
-                "Série Volatilité",
+                "Import volatility series",
                 type=["csv", "xlsx", "parquet"],
                 key="add_vol",
             )
 
-        if st.button("Enregistrer ce modèle Custom"):
+        st.caption("Supported formats: CSV, XLSX, Parquet")
+
+        if st.button(
+            "Save custom model",
+            type="primary",
+            use_container_width=False,
+        ):
             clean_name = custom_name.strip()
+
             if not clean_name:
-                st.error("Veuillez saisir un nom pour le modèle Custom.")
+                st.error("Please enter a model name.")
             elif clean_name in st.session_state["custom_models"]:
-                st.error("Un modèle porte déjà ce nom.")
+                st.error("A model with this name already exists.")
             elif not (file_var and file_es and file_vol):
-                st.error("Veuillez importer les 3 fichiers requis.")
+                st.error("Please import all three required series.")
             else:
                 st.session_state["custom_models"][clean_name] = {
                     "var": parse_uploaded_file(file_var),
                     "es": parse_uploaded_file(file_es),
                     "vol": parse_uploaded_file(file_vol),
                 }
-                st.success(f"Modèle Custom '{clean_name}' ajouté.")
+                st.success(f"Model '{clean_name}' saved.")
                 st.rerun()
 
+    # Registered models
     if st.session_state["custom_models"]:
-        st.markdown("##### Modèles Custom en mémoire")
+        st.markdown("### Registered Custom Models")
+        st.caption("Select the models to include in the comparative audit.")
+
         cols_custom_select = {}
+
         for c_name in list(st.session_state["custom_models"].keys()):
-            col_chk, col_del = st.columns([5, 1])
-            with col_chk:
-                is_selected = st.checkbox(
-                    f"Inclure **{c_name}**", value=True, key=f"chk_{c_name}"
+            with st.container(border=True):
+                col_info, col_chk, col_del = st.columns(
+                    [3, 2, 1],
+                    vertical_alignment="center",
                 )
-                cols_custom_select[c_name] = is_selected
-            with col_del:
-                if st.button("Supprimer", key=f"del_{c_name}"):
-                    del st.session_state["custom_models"][c_name]
-                    st.rerun()
+
+                with col_info:
+                    st.markdown(f"**{c_name}**")
+                    st.caption("Custom risk model")
+
+                with col_chk:
+                    is_selected = st.checkbox(
+                        "Include in audit",
+                        value=True,
+                        key=f"chk_{c_name}",
+                    )
+                    cols_custom_select[c_name] = is_selected
+
+                with col_del:
+                    if st.button(
+                        "Remove",
+                        key=f"del_{c_name}",
+                        use_container_width=True,
+                    ):
+                        del st.session_state["custom_models"][c_name]
+                        st.rerun()
 
         return cols_custom_select
+
     return {}
 
 
-def page_audit_comparatif():
-    st.title("Audit Comparatif du Risque")
 
-    st.subheader("1. Modèles Standards")
-    col_chk1, col_chk2, col_chk3 = st.columns(3)
+def page_audit_comparatif():
+    st.title("Risk Model Comparison")
+    st.caption(
+        f"MODEL VALIDATION  /  {CONFIG['ticker']}  /  "
+        f"{CONFIG['start_date']} — {CONFIG['end_date'] or 'Aujourd’hui'}"
+    )
+
+
+    st.markdown("### Modèles de référence")
+    st.caption("Sélectionnez les méthodologies à comparer.")
+
+    col_chk1, col_chk2, col_chk3 = st.columns(3, gap="small")
+
     with col_chk1:
-        c_hist = st.checkbox(STANDARD_MODELS["historical"], value=True)
+        with st.container(border=True):
+            st.markdown("**HISTORICAL SIMULATION**")
+            st.caption("Quantiles empiriques")
+            c_hist = st.checkbox(
+                "Inclure à l'audit",
+                value=True,
+                key="model_historical"
+            )
+
     with col_chk2:
-        c_gt = st.checkbox(STANDARD_MODELS["garch_t"], value=True)
+        with st.container(border=True):
+            st.markdown("**GARCH-t**")
+            st.caption("Volatilité conditionnelle")
+            c_gt = st.checkbox(
+                "Inclure à l'audit",
+                value=True,
+                key="model_garch_t"
+            )
+
     with col_chk3:
-        c_gjr = st.checkbox(STANDARD_MODELS["gjr_skewt"], value=True)
+        with st.container(border=True):
+            st.markdown("**GJR-GARCH**")
+            st.caption("Volatilité asymétrique · Skew-t")
+            c_gjr = st.checkbox(
+                "Inclure à l'audit",
+                value=True,
+                key="model_gjr_skewt"
+            )
+
 
     selected_standards = []
     if c_hist:
@@ -275,8 +356,17 @@ def page_audit_comparatif():
             st.success("Audit comparatif terminé.")
 
             st.subheader("Tableau comparatif des métriques")
-            df_display = df_summary.astype(str)
-            st.table(df_display)
+            df_display = df_summary.copy()
+            df_display.index.name = "Métrique"
+            df_display = df_display.reset_index()
+            df_display = df_display.astype(str)  # 👈 LIGNE AJOUTÉE
+
+            st.dataframe(
+                df_display,
+                width="stretch",
+                hide_index=True,
+                height=420,
+            )
             afficher_synthese_comparative(df_summary)
 @st.cache_data(ttl=3600, show_spinner=False)
 def is_valid_ticker(symbol: str) -> bool:
@@ -391,8 +481,18 @@ def page_audit_unitaire():
         st.markdown("---")
 
         st.subheader("Détail complet des résultats d'audit")
-        df_display = df_summary.astype(str)
-        st.table(df_display)
+        df_display = df_summary.copy()
+        df_display.index.name = "Métrique"
+        df_display = df_display.reset_index()
+        df_display = df_display.astype(str)  # 👈 LIGNE AJOUTÉE
+
+        st.dataframe(
+            df_display,
+            width="stretch",
+            hide_index=True,
+            height=420,
+        )
+
 
         raw_res = dict_outputs.get(modele_choisi_label, {})
         if "var_series" in raw_res and "test_returns" in raw_res:
@@ -455,10 +555,290 @@ def afficher_interface():
         page_title="Audit Operator", layout="wide"
     )
 
-    st.sidebar.title("Audit Operator")
+
+    st.sidebar.markdown("""
+    <div style="padding: 8px 0 18px 0;">
+        <div style="font-size: 11px; letter-spacing: 3px; color: #72c9e4;">
+            Adam Khazani Ahsaini
+        </div>
+        <div style="font-size: 21px; font-weight: 600; color: #e7eaed;">
+            AUDIT OPERATOR
+        </div>
+        <div style="font-size: 10px; letter-spacing: 1px; color: #89959d;">
+            ÉVALUATION DE MODÈLES PRÉDICTIFS
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.sidebar.markdown("---")
+
     menu = st.sidebar.radio(
-        "Navigation :", ["Audit Comparatif", "Audit Unitaire", "Config"]
+        "WORKSPACE",
+        ["Audit Comparatif", "Audit Unitaire", "Config"],
+        label_visibility="visible"
     )
+
+    st.sidebar.markdown("---")
+    st.sidebar.caption("ACTIVE MARKET")
+    st.sidebar.markdown(f"**{CONFIG['ticker']}**")
+
+    date_fin = CONFIG["end_date"] or datetime.date.today()
+    st.sidebar.caption(
+        f"{CONFIG['start_date']} — {date_fin}"
+    )
+
+
+
+    st.markdown("""
+    <style>
+    /* =========================================
+       AUDIT OPERATOR — INSTITUTIONAL UI
+       ========================================= */
+
+    :root {
+        --background: #111519;
+        --sidebar: #0d1216;
+        --surface: #181f25;
+        --surface-hover: #202a31;
+        --border: #2d3942;
+        --text: #e7edf2;
+        --muted: #91a0ac;
+        --accent: #70c9c0;
+        --accent-hover: #8cddd3;
+        --danger: #ef777e;
+        --success: #75c9a5;
+    }
+
+    /* Fond général */
+    .stApp {
+        background: var(--background);
+        color: var(--text);
+    }
+
+    [data-testid="stHeader"] {
+        background: rgba(17, 21, 25, 0.95);
+    }
+
+    .block-container {
+        max-width: 1500px;
+        padding-top: 2.2rem;
+        padding-bottom: 3rem;
+    }
+
+    /* Typographie */
+    html, body, [class*="css"] {
+        font-family: Inter, -apple-system, BlinkMacSystemFont,
+                     "Segoe UI", sans-serif;
+    }
+
+    h1, h2, h3, h4 {
+        color: var(--text) !important;
+        font-weight: 600 !important;
+        letter-spacing: -0.035em;
+    }
+
+    h1 {
+        font-size: 1.9rem !important;
+        line-height: 1.3 !important;
+    }
+
+    h2 {
+        font-size: 1.4rem !important;
+        margin-top: 1.8rem !important;
+    }
+
+    h3 {
+        font-size: 1.08rem !important;
+    }
+
+    p, label, li {
+        color: var(--text);
+    }
+
+    [data-testid="stCaptionContainer"] {
+        color: var(--muted) !important;
+        font-size: 0.82rem;
+    }
+
+    /* Sidebar */
+    [data-testid="stSidebar"] {
+        background: var(--sidebar);
+        border-right: 1px solid var(--border);
+    }
+
+    [data-testid="stSidebar"] > div {
+        padding-top: 1.5rem;
+    }
+
+    [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p {
+        line-height: 1.55;
+    }
+
+    [data-testid="stSidebar"] hr {
+        margin: 1.4rem 0;
+        border-color: var(--border) !important;
+    }
+
+    /* Navigation radio */
+    [data-testid="stSidebar"] [role="radiogroup"] {
+        gap: 0.35rem;
+    }
+
+    [data-testid="stSidebar"] [role="radiogroup"] label {
+        padding: 0.45rem 0.6rem;
+        border-radius: 6px;
+        transition: background 0.15s ease;
+    }
+
+    [data-testid="stSidebar"] [role="radiogroup"] label:hover {
+        background: var(--surface-hover);
+    }
+
+    /* Cartes et conteneurs */
+    [data-testid="stVerticalBlockBorderWrapper"] {
+        background: var(--surface);
+        border: 1px solid var(--border) !important;
+        border-radius: 10px !important;
+        transition: border-color 0.18s ease;
+    }
+
+    [data-testid="stVerticalBlockBorderWrapper"]:hover {
+        border-color: #43545e !important;
+    }
+
+    /* Métriques */
+    [data-testid="stMetric"] {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 1rem 1.1rem;
+    }
+
+    [data-testid="stMetricLabel"] {
+        color: var(--muted) !important;
+        font-size: 0.8rem !important;
+    }
+
+    [data-testid="stMetricValue"] {
+        color: var(--accent) !important;
+        font-size: 1.65rem !important;
+        font-weight: 600 !important;
+    }
+
+    [data-testid="stMetricDelta"] {
+        font-size: 0.78rem !important;
+    }
+
+    /* Champs de saisie */
+    .stTextInput input,
+    .stNumberInput input,
+    .stDateInput input,
+    .stTextArea textarea {
+        background: #12181d !important;
+        color: var(--text) !important;
+        border: 1px solid var(--border) !important;
+        border-radius: 7px !important;
+    }
+
+    .stTextInput input:focus,
+    .stNumberInput input:focus,
+    .stDateInput input:focus,
+    .stTextArea textarea:focus {
+        border-color: var(--accent) !important;
+        box-shadow: 0 0 0 1px var(--accent) !important;
+    }
+
+    /* Boutons */
+    .stButton button {
+        border-radius: 7px;
+        border: 1px solid var(--border);
+        background: var(--surface);
+        color: var(--text);
+        font-weight: 500;
+        transition: all 0.18s ease;
+    }
+
+    .stButton button:hover {
+        border-color: var(--accent);
+        color: var(--accent);
+        background: var(--surface-hover);
+    }
+
+    .stButton button[kind="primary"] {
+        background: var(--accent);
+        color: #101819;
+        border-color: var(--accent);
+        font-weight: 650;
+    }
+
+    .stButton button[kind="primary"]:hover {
+        background: var(--accent-hover);
+        border-color: var(--accent-hover);
+        color: #101819;
+    }
+
+    /* Cases à cocher */
+    [data-testid="stCheckbox"] label {
+        font-size: 0.84rem;
+    }
+
+    /* Import de fichiers */
+    [data-testid="stFileUploader"] section {
+        background: #131a1f;
+        border: 1px dashed #40505a;
+        border-radius: 8px;
+        padding: 0.6rem;
+    }
+
+    [data-testid="stFileUploader"] section:hover {
+        border-color: var(--accent);
+    }
+
+    [data-testid="stFileUploader"] button {
+        border-radius: 6px;
+    }
+
+    /* Tableaux */
+    [data-testid="stDataFrame"] {
+        border: 1px solid var(--border);
+        border-radius: 9px;
+        overflow: hidden;
+    }
+
+    /* Messages */
+    [data-testid="stAlert"] {
+        border-radius: 8px;
+    }
+
+    /* Barres de progression */
+    [data-testid="stProgressBar"] > div {
+        background: var(--surface-hover);
+        border-radius: 99px;
+    }
+
+    [data-testid="stProgressBar"] > div > div {
+        background: var(--accent);
+        border-radius: 99px;
+    }
+
+    /* Séparateurs */
+    hr {
+        border-color: var(--border) !important;
+    }
+
+    /* Mobile */
+    @media (max-width: 768px) {
+        .block-container {
+            padding: 1.2rem 1rem 2rem;
+        }
+
+        h1 {
+            font-size: 1.55rem !important;
+        }
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
 
     if menu == "Audit Comparatif":
         page_audit_comparatif()
