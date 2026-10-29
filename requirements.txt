@@ -1,0 +1,10 @@
+streamlit
+pandas
+numpy
+matplotlib
+yfinance
+arch
+scipy
+statsmodels
+openpyxl
+pyarrow
