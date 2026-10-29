@@ -1,14 +1,20 @@
 import datetime
+import html
+import re
 import sys
+
 import numpy as np
 import pandas as pd
+import plotly.graph_objects as go
 import streamlit as st
-from main import CONFIG, run_backtest, stock_getter
-from streamlit.web import cli as stcli
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 import yfinance as yf
+from streamlit.web import cli as stcli
+
+from main import CONFIG, run_backtest, stock_getter
+
+# ════════════════════════════════════════════════════════════════════════════
+#  CONSTANTES
+# ════════════════════════════════════════════════════════════════════════════
 
 STANDARD_MODELS = {
     "historical": "Historique (HS)",
@@ -16,6 +22,190 @@ STANDARD_MODELS = {
     "gjr_skewt": "GJR-GARCH (Skew-t)",
 }
 
+METRIC_LABELS = {
+    "basel_zone_actu": "Zone de Bâle (actuelle)",
+    "exceptions": "Exceptions VaR",
+    "exc_rate": "Taux d'exceptions (%)",
+    "obs_tested": "Observations testées",
+    "kupiec_pval": "Kupiec POF · p-value",
+    "christof_cc_pval": "Christoffersen CC · p-value",
+    "dq_pval": "Dynamic Quantile · p-value",
+    "christof_ind_pval": "Christoffersen IND · p-value",
+    "es_mf_pval": "ES McNeil-Frey · p-value",
+    "acerbi_z1_stat": "Acerbi-Szekely Z1 · statistique",
+    "acerbi_z1_pval": "Acerbi-Szekely Z1 · p-value",
+    "tail_resid_mean": "Moyenne des résidus de queue",
+    "conv_warnings": "Alertes de convergence",
+    "exc_2008_crisis": "Exceptions · crise 2008",
+}
+
+MODEL_COLORS = []  # rempli par apply_theme() à partir de la config
+C = {}  # rempli par apply_theme() à partir de .streamlit/config.toml
+
+
+def _norm_hex(h, default):
+    try:
+        h = str(h).strip()
+        if h.startswith("#") and len(h) == 4:
+            h = "#" + "".join(ch * 2 for ch in h[1:])
+        if h.startswith("#") and len(h) == 7:
+            int(h[1:], 16)
+            return h.upper()
+    except (ValueError, TypeError):
+        pass
+    return default
+
+
+def _rgb(h):
+    h = h.lstrip("#")
+    return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
+
+
+def _hex(rgb):
+    return "#%02X%02X%02X" % tuple(int(round(max(0, min(255, x)))) for x in rgb)
+
+
+def _mix(a, b, t):
+    ra, rb = _rgb(a), _rgb(b)
+    return _hex([ra[i] * (1 - t) + rb[i] * t for i in range(3)])
+
+
+def _lum(h):
+    def ch(v):
+        v = v / 255
+        return v / 12.92 if v <= 0.03928 else ((v + 0.055) / 1.055) ** 2.4
+    r, g, b = _rgb(h)
+    return 0.2126 * ch(r) + 0.7152 * ch(g) + 0.0722 * ch(b)
+
+
+def _file_theme(section_name="theme"):
+    """Lit une section spécifique (ex: [theme], [theme_dark]) d'un config.toml."""
+    from pathlib import Path
+    root = Path(__file__).resolve().parent
+    for cand in (root / ".streamlit" / "config.toml", root / "config.toml", root / "Config.toml"):
+        try:
+            if not cand.is_file():
+                continue
+            theme, current_section = {}, None
+            for raw in cand.read_text(encoding="utf-8").splitlines():
+                line = raw.split("#", 1)[0].strip() if '"#' not in raw else raw.strip()
+                m = re.match(r"^\[([^\]]+)\]$", line)
+                if m:
+                    current_section = m.group(1).strip()
+                    continue
+                m = re.match(r'^(\w+)\s*=\s*"([^"]*)"', line)
+                if m and current_section == section_name:
+                    theme[m.group(1)] = m.group(2)
+            if theme:
+                return theme
+        except Exception:
+            continue
+    return {}
+
+
+def _series_colors(primary, ink, panel, n=6):
+    """Palette de séries : 1re couleur = textColor, les autres = teinte de primaryColor
+    tournée par pas réguliers, avec une luminosité adaptée au fond des panneaux."""
+    import colorsys
+    r, g, b = [x / 255 for x in _rgb(primary)]
+    h, _, sat = colorsys.rgb_to_hls(r, g, b)
+    sat = max(sat, 0.55)
+    light = 0.72 if _lum(panel) < 0.4 else 0.38
+    out = [ink]
+    for k in range(n - 1):
+        rr, gg, bb = colorsys.hls_to_rgb((h + k / (n - 1)) % 1.0, light, sat)
+        out.append(_hex((rr * 255, gg * 255, bb * 255)))
+    return out
+
+
+def _theme_opt(name, default):
+    try:
+        v = st.get_option(f"theme.{name}")
+    except Exception:
+        v = None
+    if not v:
+        v = _file_theme().get(name)
+    return _norm_hex(v, default) if v else default
+
+
+def apply_theme():
+    """Lit le thème depuis le session_state et le Config.toml."""
+
+    # 1. Récupération du mode actuel (dark par défaut)
+    mode = st.session_state.get("theme_mode", "dark")
+    section_name = f"theme_{mode}"
+
+    # 2. Lecture des couleurs depuis le Config.toml
+    cfg_theme = _file_theme(section_name)
+
+    # 3. Application des couleurs (avec fallback si le fichier est vide)
+    if cfg_theme:
+        bg = _norm_hex(cfg_theme.get("backgroundColor"), "#F2F4F7")
+        panel = _norm_hex(cfg_theme.get("secondaryBackgroundColor"), "#FFFFFF")
+        ink = _norm_hex(cfg_theme.get("textColor"), "#121B2B")
+        primary = _norm_hex(cfg_theme.get("primaryColor"), "#0B1F3A")
+        primary_set = True
+    else:
+        # Fallback sur la logique d'origine si les sections n'existent pas
+        bg = _theme_opt("backgroundColor", "#F2F4F7")
+        panel = _theme_opt("secondaryBackgroundColor", "#FFFFFF")
+        ink = _theme_opt("textColor", "#121B2B")
+        primary_set = bool(st.get_option("theme.primaryColor") or _file_theme().get("primaryColor"))
+        primary = _theme_opt("primaryColor", "#0B1F3A")
+
+    # --- LE RESTE DE VOTRE FONCTION RESTE STRICTEMENT IDENTIQUE ---
+    dark_panel = _lum(panel) < 0.4
+    side = primary if _lum(primary) < 0.02 else min((ink, primary), key=_lum)
+    if _lum(side) > 0.08:
+        side = _mix(primary, "#000000", 0.7)
+    if _lum(ink) > 0.5:  # thème sombre : barre latérale plus sombre que le fond
+        side = _mix(bg, "#000000", 0.45)
+    if _lum(primary) > 0.15:
+        side_accent = primary
+    else:
+        side_accent = _mix(primary, "#FFFFFF", 0.5) if primary_set else "#6FA8E8"
+
+    muted = _mix(ink, panel, 0.3)
+    line = _mix(panel, ink, 0.18)
+    line_strong = _mix(panel, ink, 0.42)
+    grid = _mix(panel, ink, 0.10)
+    hover = _mix(panel, ink, 0.05)
+    soft = _mix(panel, ink, 0.03)
+
+    if dark_panel:
+        pos, warn, neg = "#8FF0B5", "#FFD28A", "#FFA39E"
+    else:
+        pos, warn, neg = "#16794A", "#A8620A", "#B3261E"
+
+    blue = primary if primary_set else "#1F4E8C"
+    phover = _mix(primary, "#FFFFFF", 0.22) if primary_set else "#1F4E8C"
+
+    def _contrast(x, y):
+        hi, lo = sorted((_lum(x), _lum(y)), reverse=True)
+        return (hi + 0.05) / (lo + 0.05)
+
+    onprimary = max(("#FFFFFF", "#0B0F14"), key=lambda c: _contrast(primary, c))
+
+    C.update(
+        ink=ink, muted=muted, line=line, grid=grid, navy=side, blue=blue,
+        pos=pos, warn=warn, neg=neg, panel=panel,
+        ret=_mix(ink, panel, 0.55), ret_soft=_mix(ink, panel, 0.78),
+    )
+    MODEL_COLORS[:] = _series_colors(primary, ink, panel)
+
+    return (
+        f"color-scheme: {'dark' if dark_panel else 'light'};"
+        f"--bg:{bg};--panel:{panel};--line:{line};--line-strong:{line_strong};"
+        f"--ink:{ink};--muted:{muted};--head:{ink};--side:{side};--primary:{primary};"
+        f"--primary-hover:{phover};--onprimary:{onprimary};--blue:{blue};"
+        f"--pos:{pos};--warn:{warn};--neg:{neg};--thead:{grid};--rowline:{grid};"
+        f"--hover:{hover};--soft:{soft};--side-accent:{side_accent};"
+    )
+
+
+# ════════════════════════════════════════════════════════════════════════════
+#  DONNÉES & LOGIQUE (inchangées)
+# ════════════════════════════════════════════════════════════════════════════
 
 def _cfg():
     if "cfg" not in st.session_state:
@@ -108,7 +298,7 @@ def backtester(selected_standards, selected_customs_dict, progress_callback=None
         pct_depart = int((i / total) * 100)
         if progress_callback:
             progress_callback(
-                pct_depart, f"Calcul du modèle '{display_name}' en cours..."
+                pct_depart, f"Calcul du modèle « {display_name} » en cours"
             )
 
         if m_type == "custom":
@@ -144,241 +334,10 @@ def backtester(selected_standards, selected_customs_dict, progress_callback=None
 
         pct_fin = int(((i + 1) / total) * 100)
         if progress_callback:
-            progress_callback(pct_fin, f"Modèle '{display_name}' terminé.")
+            progress_callback(pct_fin, f"Modèle « {display_name} » terminé")
 
     df_summary = pd.DataFrame(results).set_index("model").T
     return df_summary, dict_outputs
-
-
-def afficher_synthese_comparative(df_summary):
-    st.markdown("---")
-    st.subheader("Synthèse : Meilleur modèle par critère d'audit")
-
-    try:
-        cfg = _cfg()
-        modeles_display = df_summary.columns.tolist()
-
-        kupiec_pvals = {m: float(df_summary.loc["kupiec_pval", m]) for m in modeles_display}
-        best_kupiec = max(kupiec_pvals, key=kupiec_pvals.get)
-
-        cc_pvals = {m: float(df_summary.loc["christof_cc_pval", m]) for m in modeles_display}
-        best_cc = max(cc_pvals, key=cc_pvals.get)
-
-        dq_pvals = {m: float(df_summary.loc["dq_pval", m]) for m in modeles_display}
-        best_dq = max(dq_pvals, key=dq_pvals.get)
-
-        exceptions = {m: float(df_summary.loc["exceptions", m]) for m in modeles_display}
-        n_obs = float(df_summary.loc["obs_tested", modeles_display[0]])
-        target = n_obs * cfg["alpha_var"]
-        best_exc = min(exceptions, key=lambda m: abs(exceptions[m] - target))
-
-        col1, col2, col3, col4 = st.columns(4)
-
-        with col1:
-            st.metric(
-                label="Précision VaR (Kupiec)",
-                value=best_kupiec,
-                help=f"Meilleure p-value : {kupiec_pvals[best_kupiec]:.4f}",
-            )
-        with col2:
-            st.metric(
-                label="Indépendance (Christoffersen)",
-                value=best_cc,
-                help=f"Meilleure p-value CC : {cc_pvals[best_cc]:.4f}",
-            )
-        with col3:
-            st.metric(
-                label="Dynamic Quantile Test",
-                value=best_dq,
-                help=f"Meilleure p-value DQ : {dq_pvals[best_dq]:.4f}",
-            )
-        with col4:
-            st.metric(
-                label="Calibration Taux d'Exceptions",
-                value=best_exc,
-                help=f"Exceptions observées : {int(exceptions[best_exc])} "
-                     f"(cible ≈ {target:.0f})",
-            )
-    except Exception:
-        st.info("Synthèse automatique indisponible pour cette sélection.")
-
-
-def gestionnaire_modeles_custom(show_checkboxes=True):
-    if "custom_models" not in st.session_state:
-        st.session_state["custom_models"] = {}
-
-    with st.container(border=True):
-        st.markdown("### Custom Model")
-        st.caption("Import external risk series for comparison with reference models.")
-
-        custom_name = st.text_input(
-            "MODEL NAME",
-            placeholder="e.g. RiskMetrics_2026",
-            key="custom_model_name",
-        )
-
-        st.markdown("**INPUT SERIES**")
-        c1, c2, c3 = st.columns(3, gap="small")
-
-        with c1:
-            st.markdown("**01 / VaR**")
-            file_var = st.file_uploader("Import VaR series",
-                                        type=["csv", "xlsx", "parquet"], key="add_var")
-        with c2:
-            st.markdown("**02 / Expected Shortfall**")
-            file_es = st.file_uploader("Import ES series",
-                                       type=["csv", "xlsx", "parquet"], key="add_es")
-        with c3:
-            st.markdown("**03 / Volatility**")
-            file_vol = st.file_uploader("Import volatility series",
-                                        type=["csv", "xlsx", "parquet"], key="add_vol")
-
-        st.caption("Supported formats: CSV, XLSX, Parquet")
-
-        if st.button("Save custom model", type="primary", use_container_width=False):
-            clean_name = custom_name.strip()
-            if not clean_name:
-                st.error("Please enter a model name.")
-            elif clean_name in st.session_state["custom_models"]:
-                st.error("A model with this name already exists.")
-            elif not (file_var and file_es and file_vol):
-                st.error("Please import all three required series.")
-            else:
-                try:
-                    var_series = parse_uploaded_file(file_var, "VaR")
-                    es_series = parse_uploaded_file(file_es, "ES")
-                    vol_series = parse_uploaded_file(file_vol, "Volatilité")
-                except ValueError as e:
-                    st.error(str(e))
-                else:
-                    st.session_state["custom_models"][clean_name] = {
-                        "var": var_series,
-                        "es": es_series,
-                        "vol": vol_series,
-                    }
-                    st.toast(f"Modèle '{clean_name}' enregistré.")
-                    st.rerun()
-
-    if st.session_state["custom_models"]:
-        st.markdown("### Registered Custom Models")
-        if show_checkboxes:
-            st.caption("Select the models to include in the comparative audit.")
-        else:
-            st.caption("Manage your registered models.")
-
-        cols_custom_select = {}
-        for c_name in list(st.session_state["custom_models"].keys()):
-            with st.container(border=True):
-                if show_checkboxes:
-                    col_info, col_chk, col_del = st.columns(
-                        [3, 2, 1], vertical_alignment="center",
-                    )
-                else:
-                    col_info, col_del = st.columns(
-                        [4, 1], vertical_alignment="center",
-                    )
-
-                with col_info:
-                    st.markdown(f"**{c_name}**")
-                    st.caption("Custom risk model")
-
-                if show_checkboxes:
-                    with col_chk:
-                        is_selected = st.checkbox(
-                            "Include in audit", value=True, key=f"chk_{c_name}"
-                        )
-                        cols_custom_select[c_name] = is_selected
-
-                with col_del:
-                    if st.button("Remove", key=f"del_{c_name}", use_container_width=True):
-                        del st.session_state["custom_models"][c_name]
-                        st.rerun()
-        return cols_custom_select
-
-    return {}
-
-
-def page_audit_comparatif():
-    cfg = _cfg()
-    st.title("Risk Model Comparison")
-    st.caption(
-        f"MODEL VALIDATION  /  {cfg['ticker']}  /  "
-        f"{cfg['start_date']} — {cfg['end_date'] or 'Aujourd’hui'}"
-    )
-
-    st.subheader("1. Modèles de référence")
-    st.caption("Sélectionnez les méthodologies à comparer.")
-
-    col_chk1, col_chk2, col_chk3 = st.columns(3, gap="small")
-    with col_chk1:
-        with st.container(border=True):
-            st.markdown("**HISTORICAL SIMULATION**")
-            st.caption("Quantiles empiriques")
-            c_hist = st.checkbox("Inclure à l'audit", value=True, key="model_historical")
-    with col_chk2:
-        with st.container(border=True):
-            st.markdown("**GARCH-t**")
-            st.caption("Volatilité conditionnelle")
-            c_gt = st.checkbox("Inclure à l'audit", value=True, key="model_garch_t")
-    with col_chk3:
-        with st.container(border=True):
-            st.markdown("**GJR-GARCH**")
-            st.caption("Volatilité asymétrique · Skew-t")
-            c_gjr = st.checkbox("Inclure à l'audit", value=True, key="model_gjr_skewt")
-
-    selected_standards = []
-    if c_hist:
-        selected_standards.append("historical")
-    if c_gt:
-        selected_standards.append("garch_t")
-    if c_gjr:
-        selected_standards.append("gjr_skewt")
-
-    st.subheader("2. Modèles Custom")
-    custom_selections = gestionnaire_modeles_custom()
-
-    selected_customs = {
-        name: st.session_state["custom_models"][name]
-        for name, is_sel in custom_selections.items() if is_sel
-    }
-
-    st.markdown("---")
-
-    if st.button("Lancer l'audit comparatif", type="primary"):
-        if not selected_standards and not selected_customs:
-            st.warning("Veuillez sélectionner au moins un modèle à auditer.")
-        else:
-            ok, msg = _check_period(cfg)
-            if not ok:
-                st.error(msg)
-            else:
-                barre = st.progress(0)
-                status = st.empty()
-
-                def mettre_a_jour_ui(pct, message):
-                    barre.progress(pct)
-                    status.text(f"{message} ({pct}%)")
-
-                try:
-                    df_summary, dict_outputs = backtester(
-                        selected_standards, selected_customs,
-                        progress_callback=mettre_a_jour_ui,
-                    )
-                except ValueError as e:
-                    status.empty()
-                    st.error(str(e))
-                else:
-                    status.empty()
-                    st.success("Audit comparatif terminé.")
-
-                    st.subheader("Tableau comparatif des métriques")
-                    df_display = df_summary.copy()
-                    df_display.index.name = "Métrique"
-                    df_display = df_display.reset_index().astype(str)
-
-                    st.dataframe(df_display, width="stretch",
-                                 hide_index=True, height=420)
-                    afficher_synthese_comparative(df_summary)
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -392,57 +351,488 @@ def is_valid_ticker(symbol: str) -> bool:
         return False
 
 
-def page_config():
-    st.title("Configuration")
+# ════════════════════════════════════════════════════════════════════════════
+#  PRIMITIVES UI
+# ════════════════════════════════════════════════════════════════════════════
+
+def _h(markup: str) -> str:
+    """Aplatit le HTML : évite que Markdown ne l'interprète comme du code."""
+    return "".join(line.strip() for line in markup.splitlines())
+
+
+def _esc(x) -> str:
+    return html.escape(str(x))
+
+
+def _render(markup: str):
+    st.markdown(_h(markup), unsafe_allow_html=True)
+
+
+def page_header(kicker, title, subtitle=""):
+    sub = f'<div class="ph-sub">{_esc(subtitle)}</div>' if subtitle else ""
+    _render(f"""
+    <div class="ph">
+        <div class="ph-kicker">{_esc(kicker)}</div>
+        <div class="ph-title">{_esc(title)}</div>
+        {sub}
+    </div>
+    """)
+
+
+def section(num, title, desc=""):
+    d = f'<span class="sec-desc">{_esc(desc)}</span>' if desc else ""
+    _render(f"""
+    <div class="sec">
+        <span class="sec-num">{_esc(num)}</span>
+        <span class="sec-title">{_esc(title)}</span>
+        {d}
+    </div>
+    """)
+
+
+def panel_label(text):
+    _render(f'<div class="plabel">{_esc(text)}</div>')
+
+
+def status_line(kind, text):
+    """Ligne de statut sobre (remplace les bandeaux colorés st.success/error/warning)."""
+    tag = {"pos": "Valide", "neg": "Erreur", "warn": "Attention"}.get(kind, "Info")
+    _render(
+        f'<div class="stat {kind}"><span class="stat-tag">{tag}</span>'
+        f'<span class="stat-txt">{_esc(text)}</span></div>'
+    )
+
+
+def context_ribbon():
     cfg = _cfg()
+    fin = cfg["end_date"] or datetime.date.today()
+    cells = [
+        ("Instrument", cfg["ticker"]),
+        ("Période", f"{cfg['start_date']} → {fin}"),
+        ("Fenêtre", f"{cfg['window_size']} j"),
+        ("Refit", f"{cfg['refit_freq']} j"),
+        ("α VaR", f"{float(cfg['alpha_var']) * 100:.2f}%"),
+        ("α ES", f"{float(cfg['alpha_es']) * 100:.2f}%"),
+    ]
+    inner = "".join(
+        f'<div class="rb-cell"><div class="rb-k">{_esc(k)}</div>'
+        f'<div class="rb-v">{_esc(v)}</div></div>'
+        for k, v in cells
+    )
+    _render(f'<div class="ribbon">{inner}</div>')
 
-    raw_start = st.text_input("Date de début de l'analyse (AAAA-MM-JJ)",
-                              str(cfg["start_date"]))
-    raw_end = st.text_input("Date de fin de l'analyse (AAAA-MM-JJ, ou None)",
-                            str(cfg["end_date"]))
 
+def kpi_strip(items):
+    """items : liste de (label, valeur, sous-texte, ton) ; ton ∈ pos/warn/neg/''."""
+    cells = ""
+    for label, value, sub, tone in items:
+        cells += (
+            f'<div class="kpi {tone}"><div class="kpi-k">{_esc(label)}</div>'
+            f'<div class="kpi-v">{_esc(value)}</div>'
+            f'<div class="kpi-s">{_esc(sub)}</div></div>'
+        )
+    _render(f'<div class="kpis">{cells}</div>')
+
+
+def _fmt_scalar(f, key=""):
+    if np.isnan(f):
+        return "—"
+    if "pval" in str(key):
+        return f"{f:.4f}" if (f == 0 or abs(f) >= 1e-4) else f"{f:.2e}"
+    if f.is_integer() and abs(f) < 1e12:
+        return f"{int(f):,}".replace(",", " ")
+    if f != 0 and abs(f) < 1e-4:
+        return f"{f:.2e}"
+    return f"{f:,.4f}".replace(",", " ")
+
+
+def _fmt(key, v):
+    # Tuples / listes / tableaux (ex. intervalles de confiance) : [a ; b]
+    if isinstance(v, (tuple, list, np.ndarray)):
+        try:
+            vals = [float(x) for x in v]
+        except (TypeError, ValueError):
+            return str(v)
+        if all(np.isnan(x) for x in vals):
+            return "—"
+        return "[" + " ; ".join(_fmt_scalar(x, key) for x in vals) + "]"
+    if isinstance(v, str):
+        return v
     try:
-        new_start = datetime.date.fromisoformat(raw_start.strip())
-        new_end = (None if raw_end.strip().lower() == "none"
-                   else datetime.date.fromisoformat(raw_end.strip()))
-    except ValueError:
-        st.error("Format invalide, utilisez AAAA-MM-JJ. "
-                 "Les dates précédentes sont conservées.")
-    else:
-        end_eff = new_end or datetime.date.today()
-        jours_bourse = (end_eff - new_start).days * 252 / 365
-        if end_eff <= new_start:
-            st.error("La date de fin doit être postérieure à la date de début. "
-                     "Les dates précédentes sont conservées.")
-        elif jours_bourse <= cfg["window_size"]:
-            st.error(
-                f"Période trop courte : ~{int(jours_bourse)} jours de bourse "
-                f"pour une fenêtre de {cfg['window_size']}. "
-                "Les dates précédentes sont conservées."
-            )
-        else:
-            cfg["start_date"] = new_start
-            cfg["end_date"] = new_end
-            st.success("Période valide.")
+        f = float(v)
+    except (TypeError, ValueError):
+        return str(v)
+    return _fmt_scalar(f, key)
 
-    raw = st.text_input("Stock à utiliser", cfg["ticker"])
-    symbol = raw.strip().upper()
-    if not symbol:
-        st.warning("Veuillez saisir un ticker.")
-    elif is_valid_ticker(symbol):
-        cfg["ticker"] = symbol
-        st.success(f"Ticker valide : {symbol}")
-    else:
-        st.error(f"Ticker introuvable : '{symbol}'. Le ticker précédent est conservé.")
+
+def _cell_tone(key, v):
+    key = str(key)
+    if key == "basel_zone_actu":
+        return {"VERTE": "pos", "JAUNE": "warn", "ROUGE": "neg"}.get(str(v).upper(), "")
+    if "pval" in key:
+        try:
+            return "pos" if float(v) > 0.05 else "neg"
+        except (TypeError, ValueError):
+            return ""
+    return ""
+
+
+def render_metrics_table(df_summary, compact=False):
+    models = list(df_summary.columns)
+    head = "".join(f'<th class="num">{_esc(m)}</th>' for m in models)
+    code_th = "" if compact else "<th>Code</th>"
+    rows = ""
+    for key in df_summary.index:
+        label = METRIC_LABELS.get(key, str(key).replace("_", " ").capitalize())
+        code_td = "" if compact else f'<td class="code">{_esc(key)}</td>'
+        cells = ""
+        for m in models:
+            raw = df_summary.loc[key, m]
+            cells += (
+                f'<td class="num {_cell_tone(key, raw)}">{_esc(_fmt(key, raw))}</td>'
+            )
+        rows += f'<tr><td class="lbl">{_esc(label)}</td>{code_td}{cells}</tr>'
+    _render(
+        f'<div class="tbl-wrap"><table class="fin"><thead><tr><th>Métrique</th>'
+        f'{code_th}{head}</tr></thead><tbody>{rows}</tbody></table></div>'
+    )
+
+
+def render_kv_table(rows):
+    body = "".join(
+        f'<tr><td class="lbl">{_esc(k)}</td><td class="num">{_esc(v)}</td></tr>'
+        for k, v in rows
+    )
+    _render(
+        f'<div class="tbl-wrap"><table class="fin"><thead><tr><th>Paramètre</th>'
+        f'<th class="num">Valeur</th></tr></thead><tbody>{body}</tbody></table></div>'
+    )
+
+
+def _plot_layout(fig, height):
+    fig.update_layout(
+        paper_bgcolor=C["panel"],
+        plot_bgcolor=C["panel"],
+        margin=dict(l=8, r=8, t=8, b=8),
+        height=height,
+        font=dict(family="IBM Plex Mono, monospace", size=11, color=C["muted"]),
+        legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="left", x=0,
+                    font=dict(size=10), bgcolor="rgba(0,0,0,0)"),
+        hovermode="x unified",
+        hoverlabel=dict(font=dict(family="IBM Plex Mono, monospace", size=11, color=C["ink"]),
+                        bgcolor=C["panel"], bordercolor=C["line"]),
+        xaxis=dict(showgrid=False, zeroline=False, linecolor=C["line"],
+                   ticks="outside", tickcolor=C["line"]),
+        yaxis=dict(showgrid=True, gridcolor=C["grid"], zeroline=False,
+                   linecolor=C["line"], ticks="outside", tickcolor=C["line"]),
+    )
+    return fig
+
+
+def _neg(series):
+    return -series.abs() if (series > 0).any() else series
+
+
+def build_backtest_chart(raw_res, conf_label, height=470):
+    if "var_series" not in raw_res or "test_returns" not in raw_res:
+        return None
+    returns_s = raw_res["test_returns"]
+    var_plot = _neg(raw_res["var_series"])
+
+    fig = go.Figure()
+    fig.add_hline(y=0, line_color=C["line"], line_width=1)
+    fig.add_trace(go.Scatter(
+        x=returns_s.index, y=returns_s.values, mode="lines", name="Rendements",
+        line=dict(color=C["ret"], width=0.9),
+    ))
+    fig.add_trace(go.Scatter(
+        x=var_plot.index, y=var_plot.values, mode="lines", name=f"VaR {conf_label}",
+        line=dict(color=C["navy"], width=1.6, shape="hv"),
+    ))
+    if "es_frtb_series" in raw_res:
+        es_plot = _neg(raw_res["es_frtb_series"])
+        fig.add_trace(go.Scatter(
+            x=es_plot.index, y=es_plot.values, mode="lines", name="ES (FRTB)",
+            line=dict(color=C["warn"], width=1.2, dash="dot", shape="hv"),
+        ))
+    exc_mask = returns_s < var_plot
+    fig.add_trace(go.Scatter(
+        x=returns_s[exc_mask].index, y=returns_s[exc_mask].values,
+        mode="markers", name="Exceptions",
+        marker=dict(color=C["neg"], size=7, symbol="x-thin",
+                    line=dict(color=C["neg"], width=1.6)),
+    ))
+    return _plot_layout(fig, height)
+
+
+def build_overlay_chart(dict_outputs, conf_label, height=420):
+    first = next((v for v in dict_outputs.values() if "test_returns" in v), None)
+    if first is None:
+        return None
+    fig = go.Figure()
+    fig.add_hline(y=0, line_color=C["line"], line_width=1)
+    r = first["test_returns"]
+    fig.add_trace(go.Scatter(
+        x=r.index, y=r.values, mode="lines", name="Rendements",
+        line=dict(color=C["ret_soft"], width=0.8),
+    ))
+    for i, (name, res) in enumerate(dict_outputs.items()):
+        if "var_series" not in res:
+            continue
+        v = _neg(res["var_series"])
+        fig.add_trace(go.Scatter(
+            x=v.index, y=v.values, mode="lines", name=f"VaR {conf_label} · {name}",
+            line=dict(color=MODEL_COLORS[i % len(MODEL_COLORS)], width=1.5, shape="hv"),
+        ))
+    _plot_layout(fig, height)
+    fig.update_layout(hoverlabel=dict(namelength=-1))
+    return fig
+
+
+def _conf_label(cfg):
+    return f"{(1 - float(cfg['alpha_var'])) * 100:g}%"
+
+
+def _make_progress():
+    barre = st.progress(0)
+    status = st.empty()
+
+    def cb(pct, message):
+        barre.progress(pct)
+        status.markdown(
+            f'<div class="status-line">{_esc(message)} · {pct:d}%</div>',
+            unsafe_allow_html=True,
+        )
+
+    def clear():
+        barre.empty()
+        status.empty()
+
+    return cb, clear
+
+
+# ════════════════════════════════════════════════════════════════════════════
+#  SYNTHÈSE COMPARATIVE
+# ════════════════════════════════════════════════════════════════════════════
+
+def afficher_synthese_comparative(df_summary):
+    section("05", "Synthèse", "Meilleur modèle par critère d'audit")
+    try:
+        cfg = _cfg()
+        modeles = df_summary.columns.tolist()
+
+        kupiec = {m: float(df_summary.loc["kupiec_pval", m]) for m in modeles}
+        best_kupiec = max(kupiec, key=kupiec.get)
+
+        cc = {m: float(df_summary.loc["christof_cc_pval", m]) for m in modeles}
+        best_cc = max(cc, key=cc.get)
+
+        dq = {m: float(df_summary.loc["dq_pval", m]) for m in modeles}
+        best_dq = max(dq, key=dq.get)
+
+        exc = {m: float(df_summary.loc["exceptions", m]) for m in modeles}
+        n_obs = float(df_summary.loc["obs_tested", modeles[0]])
+        target = n_obs * cfg["alpha_var"]
+        best_exc = min(exc, key=lambda m: abs(exc[m] - target))
+
+        rows = [
+            ("Précision de la VaR", "Kupiec POF", best_kupiec,
+             f"p = {kupiec[best_kupiec]:.4f}"),
+            ("Indépendance des exceptions", "Christoffersen CC", best_cc,
+             f"p = {cc[best_cc]:.4f}"),
+            ("Qualité dynamique", "Dynamic Quantile", best_dq,
+             f"p = {dq[best_dq]:.4f}"),
+            ("Calibration du taux d'exceptions", "Écart à la cible", best_exc,
+             f"{int(exc[best_exc])} obs. · cible ≈ {target:.0f}"),
+        ]
+        body = "".join(
+            f'<tr><td class="lbl">{_esc(a)}</td><td class="code">{_esc(b)}</td>'
+            f'<td class="lbl strong">{_esc(c)}</td><td class="num">{_esc(d)}</td></tr>'
+            for a, b, c, d in rows
+        )
+        _render(
+            '<div class="tbl-wrap"><table class="fin"><thead><tr>'
+            '<th>Critère</th><th>Test</th><th>Meilleur modèle</th>'
+            f'<th class="num">Indicateur</th></tr></thead><tbody>{body}</tbody></table></div>'
+        )
+    except Exception:
+        status_line("", "Synthèse automatique indisponible pour cette sélection.")
+
+
+# ════════════════════════════════════════════════════════════════════════════
+#  GESTIONNAIRE DE MODÈLES CUSTOM
+# ════════════════════════════════════════════════════════════════════════════
+
+def gestionnaire_modeles_custom(show_checkboxes=True):
+    if "custom_models" not in st.session_state:
+        st.session_state["custom_models"] = {}
+
+    with st.container(border=True):
+        panel_label("Importer un modèle externe")
+        custom_name = st.text_input(
+            "Nom du modèle",
+            placeholder="ex. RiskMetrics_2026",
+            key="custom_model_name",
+        )
+
+        c1, c2, c3 = st.columns(3, gap="small")
+        with c1:
+            panel_label("A · Série VaR")
+            file_var = st.file_uploader("Série VaR", type=["csv", "xlsx", "parquet"],
+                                        key="add_var", label_visibility="collapsed")
+        with c2:
+            panel_label("B · Série Expected Shortfall")
+            file_es = st.file_uploader("Série ES", type=["csv", "xlsx", "parquet"],
+                                       key="add_es", label_visibility="collapsed")
+        with c3:
+            panel_label("C · Série de volatilité")
+            file_vol = st.file_uploader("Série de volatilité", type=["csv", "xlsx", "parquet"],
+                                        key="add_vol", label_visibility="collapsed")
+
+        st.caption("Formats acceptés : CSV, XLSX, Parquet · index = dates, première colonne = valeurs.")
+
+        if st.button("Enregistrer le modèle", type="primary"):
+            clean_name = custom_name.strip()
+            if not clean_name:
+                status_line("neg", "Veuillez saisir un nom de modèle.")
+            elif clean_name in st.session_state["custom_models"]:
+                status_line("neg", "Un modèle portant ce nom existe déjà.")
+            elif not (file_var and file_es and file_vol):
+                status_line("neg", "Veuillez importer les trois séries requises.")
+            else:
+                try:
+                    var_series = parse_uploaded_file(file_var, "VaR")
+                    es_series = parse_uploaded_file(file_es, "ES")
+                    vol_series = parse_uploaded_file(file_vol, "Volatilité")
+                except ValueError as e:
+                    status_line("neg", str(e))
+                else:
+                    st.session_state["custom_models"][clean_name] = {
+                        "var": var_series,
+                        "es": es_series,
+                        "vol": vol_series,
+                    }
+                    st.toast(f"Modèle « {clean_name} » enregistré.")
+                    st.rerun()
+
+    if st.session_state["custom_models"]:
+        panel_label(
+            "Modèles enregistrés · sélection pour l'audit" if show_checkboxes
+            else "Modèles enregistrés"
+        )
+
+        cols_custom_select = {}
+        for c_name in list(st.session_state["custom_models"].keys()):
+            with st.container(border=True):
+                if show_checkboxes:
+                    col_info, col_chk, col_del = st.columns(
+                        [3, 2, 1], vertical_alignment="center",
+                    )
+                else:
+                    col_info, col_del = st.columns([4, 1], vertical_alignment="center")
+
+                with col_info:
+                    _render(
+                        f'<div class="card-title">{_esc(c_name)}</div>'
+                        '<div class="card-desc">Modèle externe · VaR / ES / Vol</div>'
+                    )
+
+                if show_checkboxes:
+                    with col_chk:
+                        cols_custom_select[c_name] = st.checkbox(
+                            "Inclure dans l'audit", value=True, key=f"chk_{c_name}"
+                        )
+
+                with col_del:
+                    if st.button("Retirer", key=f"del_{c_name}", use_container_width=True):
+                        del st.session_state["custom_models"][c_name]
+                        st.rerun()
+        return cols_custom_select
+
+    return {}
+
+
+# ════════════════════════════════════════════════════════════════════════════
+#  PAGES
+# ════════════════════════════════════════════════════════════════════════════
+
+def page_audit_comparatif():
+    cfg = _cfg()
+    page_header("Validation de modèles", "Audit comparatif",
+                "Backtest simultané de plusieurs modèles de VaR / ES sur un même instrument.")
+    context_ribbon()
+
+    section("01", "Modèles de référence", "Méthodologies à comparer")
+    defs = [
+        ("historical", "Simulation historique", "Quantiles empiriques"),
+        ("garch_t", "GARCH-t", "Volatilité conditionnelle · Student-t"),
+        ("gjr_skewt", "GJR-GARCH", "Volatilité asymétrique · Skew-t"),
+    ]
+    selected_standards = []
+    for col, (code, title, desc) in zip(st.columns(3, gap="small"), defs):
+        with col:
+            with st.container(border=True):
+                _render(
+                    f'<div class="card-title">{_esc(title)}</div>'
+                    f'<div class="card-desc">{_esc(desc)}</div>'
+                )
+                if st.checkbox("Inclure dans l'audit", value=True, key=f"model_{code}"):
+                    selected_standards.append(code)
+
+    section("02", "Modèles custom", "Séries de risque externes")
+    custom_selections = gestionnaire_modeles_custom()
+    selected_customs = {
+        name: st.session_state["custom_models"][name]
+        for name, is_sel in custom_selections.items() if is_sel
+    }
+
+    section("03", "Exécution")
+    if st.button("Lancer l'audit comparatif", type="primary"):
+        if not selected_standards and not selected_customs:
+            status_line("warn", "Veuillez sélectionner au moins un modèle à auditer.")
+        else:
+            ok, msg = _check_period(cfg)
+            if not ok:
+                status_line("neg", msg)
+            else:
+                cb, clear = _make_progress()
+                try:
+                    df_summary, dict_outputs = backtester(
+                        selected_standards, selected_customs, progress_callback=cb,
+                    )
+                except ValueError as e:
+                    clear()
+                    status_line("neg", str(e))
+                else:
+                    clear()
+                    st.session_state["last_comp"] = {
+                        "df": df_summary,
+                        "out": dict_outputs,
+                        "conf": _conf_label(cfg),
+                        "ticker": cfg["ticker"],
+                    }
+
+    res = st.session_state.get("last_comp")
+    if res:
+        section("04", "Résultats", f"{res['ticker']} · tableau comparatif des métriques")
+        render_metrics_table(res["df"])
+        st.caption("Vert : H₀ non rejetée (p > 5 %) · Rouge : H₀ rejetée (p ≤ 5 %).")
+
+        afficher_synthese_comparative(res["df"])
+
+        fig = build_overlay_chart(res["out"], res["conf"])
+        if fig is not None:
+            section("06", "VaR comparées", f"Seuils VaR {res['conf']} superposés aux rendements")
+            st.plotly_chart(fig, use_container_width=True, theme=None)
 
 
 def page_audit_unitaire():
     cfg = _cfg()
-    st.title("Audit Unitaire d'un Modèle")
+    page_header("Validation de modèles", "Audit unitaire",
+                "Backtest détaillé d'un modèle : exceptions, tests statistiques, zone de Bâle.")
+    context_ribbon()
 
-    st.subheader("1. Sélection du modèle")
-    st.caption("Sélectionnez le modèle à auditer. Les modèles custom apparaîtront ici.")
-
+    section("01", "Sélection du modèle")
     options_map = {label: code for code, label in STANDARD_MODELS.items()}
     custom_models = st.session_state.get("custom_models", {})
     for c_name in custom_models.keys():
@@ -452,367 +842,393 @@ def page_audit_unitaire():
         "Sélectionnez le modèle :",
         options=list(options_map.keys()),
         horizontal=True,
-        label_visibility="collapsed"
+        label_visibility="collapsed",
     )
     modele_code = options_map[modele_choisi_label]
 
-    st.subheader("2. Modèles Custom")
+    section("02", "Modèles custom", "Séries de risque externes")
     gestionnaire_modeles_custom(show_checkboxes=False)
 
-    st.markdown("---")
-
+    section("03", "Exécution")
     if st.button("Lancer l'audit unitaire", type="primary"):
         ok, msg = _check_period(cfg)
         if not ok:
-            st.error(msg)
-            return
+            status_line("neg", msg)
+        else:
+            cb, clear = _make_progress()
+            selected_stds = [modele_code] if modele_code != "custom" else []
+            selected_cust = (
+                {modele_choisi_label: custom_models[modele_choisi_label]}
+                if modele_code == "custom" else {}
+            )
+            try:
+                df_summary, dict_outputs = backtester(
+                    selected_stds, selected_cust, progress_callback=cb
+                )
+            except ValueError as e:
+                clear()
+                status_line("neg", str(e))
+            else:
+                clear()
+                st.session_state["last_unit"] = {
+                    "df": df_summary,
+                    "out": dict_outputs,
+                    "label": modele_choisi_label,
+                    "conf": _conf_label(cfg),
+                    "ticker": cfg["ticker"],
+                }
 
-        barre = st.progress(0)
-        status = st.empty()
+    res = st.session_state.get("last_unit")
+    if not res:
+        return
 
-        def mettre_a_jour_ui(pct, message):
-            barre.progress(pct)
-            status.text(f"{message} ({pct}%)")
+    label = res["label"]
+    df_summary = res["df"]
+    section("04", "Résultats", f"{label} · {res['ticker']}")
 
-        selected_stds = [modele_code] if modele_code != "custom" else []
-        selected_cust = (
-            {modele_choisi_label: custom_models[modele_choisi_label]}
-            if modele_code == "custom" else {}
-        )
+    zone = str(df_summary.loc["basel_zone_actu", label])
+    n_exc = int(float(df_summary.loc["exceptions", label]))
+    rate = float(df_summary.loc["exc_rate", label])
+    kupiec_p = float(df_summary.loc["kupiec_pval", label])
+    try:
+        n_obs = float(df_summary.loc["obs_tested", label])
+        target_txt = f"cible ≈ {n_obs * cfg['alpha_var']:.0f}"
+    except Exception:
+        target_txt = "—"
+
+    kpi_strip([
+        ("Zone de Bâle", zone, "Feu réglementaire actuel",
+         {"VERTE": "pos", "JAUNE": "warn", "ROUGE": "neg"}.get(zone.upper(), "")),
+        ("Exceptions VaR", f"{n_exc}", target_txt, ""),
+        ("Taux d'exceptions", f"{rate:.2f}%", f"VaR {res['conf']}", ""),
+        ("Kupiec POF · p-value", f"{kupiec_p:.4f}",
+         "H₀ non rejetée" if kupiec_p > 0.05 else "H₀ rejetée",
+         "pos" if kupiec_p > 0.05 else "neg"),
+    ])
+
+    panel_label(f"Backtest VaR {res['conf']} & Expected Shortfall")
+    fig = build_backtest_chart(res["out"].get(label, {}), res["conf"], height=440)
+    if fig is not None:
+        st.plotly_chart(fig, use_container_width=True, theme=None)
+    else:
+        status_line("", "Séries VaR / rendements indisponibles pour ce modèle.")
+
+    section("05", "Décomposition des métriques", "Toutes les statistiques du backtest")
+    half = (len(df_summary.index) + 1) // 2
+    col_l, col_r = st.columns(2, gap="medium")
+    with col_l:
+        render_metrics_table(df_summary.iloc[:half], compact=True)
+    with col_r:
+        render_metrics_table(df_summary.iloc[half:], compact=True)
+
+
+def page_config():
+    page_header("Paramétrage", "Configuration",
+                "Instrument, période d'analyse et paramètres de backtest.")
+    cfg = _cfg()
+
+    col_a, col_b = st.columns(2, gap="medium")
+
+    with col_a:
+        section("01", "Période d'analyse")
+        raw_start = st.text_input("Date de début (AAAA-MM-JJ)", str(cfg["start_date"]))
+        raw_end = st.text_input("Date de fin (AAAA-MM-JJ, ou None)", str(cfg["end_date"]))
 
         try:
-            df_summary, dict_outputs = backtester(
-                selected_stds, selected_cust, progress_callback=mettre_a_jour_ui
-            )
-        except ValueError as e:
-            status.empty()
-            st.error(str(e))
-            return
+            new_start = datetime.date.fromisoformat(raw_start.strip())
+            new_end = (None if raw_end.strip().lower() == "none"
+                       else datetime.date.fromisoformat(raw_end.strip()))
+        except ValueError:
+            status_line("neg", "Format invalide, utilisez AAAA-MM-JJ. "
+                     "Les dates précédentes sont conservées.")
+        else:
+            end_eff = new_end or datetime.date.today()
+            jours_bourse = (end_eff - new_start).days * 252 / 365
+            if end_eff <= new_start:
+                status_line("neg", "La date de fin doit être postérieure à la date de début. "
+                         "Les dates précédentes sont conservées.")
+            elif jours_bourse <= cfg["window_size"]:
+                status_line("neg",
+                    f"Période trop courte : ~{int(jours_bourse)} jours de bourse "
+                    f"pour une fenêtre de {cfg['window_size']}. "
+                    "Les dates précédentes sont conservées."
+                )
+            else:
+                cfg["start_date"] = new_start
+                cfg["end_date"] = new_end
+                status_line("pos", "Période valide.")
 
-        status.empty()
-        st.success(f"Audit de **{modele_choisi_label}** terminé.")
+    with col_b:
+        section("02", "Instrument")
+        raw = st.text_input("Ticker (Yahoo Finance)", cfg["ticker"])
+        symbol = raw.strip().upper()
+        if not symbol:
+            status_line("warn", "Veuillez saisir un ticker.")
+        elif is_valid_ticker(symbol):
+            cfg["ticker"] = symbol
+            status_line("pos", f"Ticker valide : {symbol}")
+        else:
+            status_line("neg", f"Ticker introuvable : « {symbol} ». Le ticker précédent est conservé.")
 
-        st.subheader("Performance & Conformité Bâloise")
-        kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+    section("03", "Paramètres de backtest", "Lecture seule · définis dans main.CONFIG")
+    render_kv_table([
+        ("Fenêtre d'estimation (jours)", cfg["window_size"]),
+        ("Fréquence de réestimation (jours)", cfg["refit_freq"]),
+        ("Niveau α VaR", cfg["alpha_var"]),
+        ("Niveau α ES", cfg["alpha_es"]),
+        ("Retards du test DQ", CONFIG.get("lags_dq", "—")),
+    ])
 
-        zone_bale = str(df_summary.loc["basel_zone_actu", modele_choisi_label])
-        nb_exceptions = str(df_summary.loc["exceptions", modele_choisi_label])
-        rate_exc = f"{float(df_summary.loc['exc_rate', modele_choisi_label]):.2f}%"
-        kupiec_p = f"{float(df_summary.loc['kupiec_pval', modele_choisi_label]):.4f}"
 
-        with kpi1:
-            st.metric("Zone réglementaire Bâle", zone_bale)
-        with kpi2:
-            st.metric("Nombre d'exceptions VaR", nb_exceptions)
-        with kpi3:
-            st.metric("Taux d'exception", rate_exc)
-        with kpi4:
-            st.metric("p-value Kupiec (VaR)", kupiec_p)
+# ════════════════════════════════════════════════════════════════════════════
+#  STYLE
+# ════════════════════════════════════════════════════════════════════════════
 
-        st.markdown("---")
-        st.subheader("Détail complet des résultats d'audit")
-        df_display = df_summary.copy()
-        df_display.index.name = "Métrique"
-        df_display = df_display.reset_index().astype(str)
-        st.dataframe(df_display, width="stretch", hide_index=True, height=420)
+CSS = """
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
 
-        raw_res = dict_outputs.get(modele_choisi_label, {})
-        if "var_series" in raw_res and "test_returns" in raw_res:
-            st.subheader(
-                f"Backtest VaR 99% & Expected Shortfall - {modele_choisi_label}"
-            )
+:root {
+    /*ROOT*/
+    --mono: 'IBM Plex Mono', ui-monospace, Consolas, monospace;
+    --sans: 'IBM Plex Sans', 'Segoe UI', Arial, sans-serif;
+}
 
-            returns_s = raw_res["test_returns"]
-            var_s = raw_res["var_series"]
-            var_plot = -var_s.abs() if (var_s > 0).any() else var_s
+html, body, [class*="css"], .stApp { font-family: var(--sans); }
+.stApp { background: var(--bg); color: var(--ink); }
 
-            fig, ax = plt.subplots(figsize=(12, 5))
-            ax.plot(returns_s.index, returns_s.values,
-                    color="gray", alpha=0.4, lw=0.7, label="Rendements Réels")
-            ax.plot(var_plot.index, var_plot.values,
-                    color="darkred", lw=1.2, label="VaR 99%")
+/* Couleurs forcées : indépendantes du thème clair/sombre de Streamlit ou du navigateur */
+[data-testid="stMain"] p, [data-testid="stMain"] label, [data-testid="stMain"] li,
+[data-testid="stMain"] span, section.main p, section.main label, section.main span { color: var(--ink); }
+[data-testid="stMain"] [data-testid="stCaptionContainer"] *, section.main [data-testid="stCaptionContainer"] * { color: var(--muted) !important; }
+[data-testid="stFileUploader"] * { color: var(--ink); }
+[data-testid="stFileUploader"] small, [data-testid="stFileUploaderFile"] small,
+[data-testid="stFileUploaderDropzoneInstructions"] * { color: var(--muted) !important; }
+[data-testid="stFileUploader"] svg { fill: var(--muted); }
+[data-testid="stAlert"] { background: var(--panel) !important; }
+[data-testid="stAlert"] * { color: var(--ink) !important; }
+.stTextInput input::placeholder { color: var(--muted) !important; }
+[data-testid="stToast"], [data-testid="stToast"] * { color: var(--ink) !important; }
 
-            if "es_frtb_series" in raw_res:
-                es_s = raw_res["es_frtb_series"]
-                es_plot = -es_s.abs() if (es_s > 0).any() else es_s
-                ax.plot(es_plot.index, es_plot.values,
-                        color="orange", lw=1.2, linestyle="--",
-                        label="ES 97.5% (FRTB)")
+#MainMenu, footer, [data-testid="stToolbar"], [data-testid="stDecoration"] { display: none !important; }
+[data-testid="stHeader"] { background: transparent; height: 2rem; }
 
-            exc_mask = returns_s < var_plot
-            ax.scatter(returns_s[exc_mask].index, returns_s[exc_mask].values,
-                       color="darkred", s=20, zorder=5, label="Exceptions VaR 99%")
+.block-container { max-width: 1480px; padding: 1.4rem 2.2rem 4rem 2.2rem; }
 
-            ax.grid(True, linestyle=":", alpha=0.6)
-            ax.legend(loc="lower left")
-            ax.set_ylabel("Rendements / VaR")
-            st.pyplot(fig)
+/* ── Sidebar ─────────────────────────────────────────────── */
+[data-testid="stSidebar"] { background: var(--side); border-right: none; }
+[data-testid="stSidebar"] * { color: #C4CFDD; }
+[data-testid="stSidebar"] hr { border-color: rgba(255,255,255,0.12) !important; margin: 1.2rem 0; }
+[data-testid="stSidebar"] .sb-brand { color: #FFFFFF; font-size: 17px; font-weight: 600; letter-spacing: 0.14em; }
+[data-testid="stSidebar"] .sb-sub { color: #8DA2BC; font-size: 10.5px; letter-spacing: 0.06em; margin-top: 4px; line-height: 1.5; }
+[data-testid="stSidebar"] .sb-author { color: #6F85A3; font-size: 10px; letter-spacing: 0.08em; margin-top: 14px; text-transform: uppercase; }
+[data-testid="stSidebar"] .sb-label { color: #6F85A3; font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; margin-bottom: 8px; }
+[data-testid="stSidebar"] .sb-tick { color: #FFFFFF; font-family: var(--mono); font-size: 20px; font-weight: 600; letter-spacing: 0.02em; }
+[data-testid="stSidebar"] .sb-per { color: #8DA2BC; font-family: var(--mono); font-size: 11px; margin-top: 4px; }
+[data-testid="stSidebar"] .sb-foot { color: #587190; font-size: 10px; line-height: 1.6; }
 
+[data-testid="stSidebar"] [role="radiogroup"] { gap: 2px; }
+[data-testid="stSidebar"] [role="radiogroup"] label {
+    padding: 9px 12px; border-radius: 0; border: none;
+    border-left: 2px solid transparent; background: transparent; width: 100%;
+}
+[data-testid="stSidebar"] [role="radiogroup"] label:hover { background: rgba(255,255,255,0.05); }
+[data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) {
+    background: rgba(255,255,255,0.09); border-left: 2px solid var(--side-accent);
+}
+[data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) * { color: #FFFFFF; font-weight: 500; }
+[data-testid="stSidebar"] [role="radiogroup"] label p { font-size: 13px; letter-spacing: 0.02em; }
+
+/* ── Radios (zone principale) : contrôle segmenté ─────────── */
+[role="radiogroup"] label > div:first-child { display: none; }
+[data-testid="stMain"] [role="radiogroup"],
+section.main [role="radiogroup"] { gap: 0; flex-wrap: wrap; }
+[data-testid="stMain"] [role="radiogroup"] label,
+section.main [role="radiogroup"] label {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 0;
+    padding: 8px 18px; margin: 0 -1px 0 0;
+}
+[data-testid="stMain"] [role="radiogroup"] label:has(input:checked),
+section.main [role="radiogroup"] label:has(input:checked) { background: var(--primary); border-color: var(--primary); }
+[data-testid="stMain"] [role="radiogroup"] label:has(input:checked) p,
+section.main [role="radiogroup"] label:has(input:checked) p { color: var(--onprimary); }
+[data-testid="stMain"] [role="radiogroup"] label p,
+section.main [role="radiogroup"] label p { font-size: 12.5px; font-weight: 500; letter-spacing: 0.02em; color: var(--ink); }
+[data-testid="stMain"] [role="radiogroup"] label:has(input:checked) p,
+[data-testid="stMain"] [role="radiogroup"] label:has(input:checked) span,
+section.main [role="radiogroup"] label:has(input:checked) span { color: var(--onprimary) !important; }
+
+/* ── En-tête de page ──────────────────────────────────────── */
+.ph { padding: 4px 0 18px 0; border-bottom: 2px solid var(--head); margin-bottom: 0; }
+.ph-kicker { font-size: 10.5px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--blue); font-weight: 600; }
+.ph-title { font-size: 26px; font-weight: 600; color: var(--head); letter-spacing: -0.01em; margin-top: 4px; }
+.ph-sub { font-size: 13px; color: var(--muted); margin-top: 6px; }
+
+/* ── Bandeau de contexte ──────────────────────────────────── */
+.ribbon { display: flex; flex-wrap: wrap; background: var(--panel); border: 1px solid var(--line); border-top: none; margin-bottom: 6px; }
+.rb-cell { flex: 1 1 130px; padding: 9px 16px; border-right: 1px solid var(--line); }
+.rb-cell:last-child { border-right: none; }
+.rb-k { font-size: 9.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+.rb-v { font-family: var(--mono); font-size: 13px; font-weight: 500; color: var(--ink); margin-top: 2px; white-space: nowrap; }
+
+/* ── Sections ─────────────────────────────────────────────── */
+.sec { display: flex; align-items: baseline; gap: 12px; margin: 30px 0 12px 0; padding-bottom: 7px; border-bottom: 1px solid var(--line-strong); }
+.sec-num { font-family: var(--mono); font-size: 11px; color: var(--blue); font-weight: 600; }
+.sec-title { font-size: 12px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--head); }
+.sec-desc { font-size: 12px; color: var(--muted); margin-left: auto; }
+.plabel { font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); font-weight: 600; margin: 2px 0 8px 0; }
+
+/* ── Cartes ───────────────────────────────────────────────── */
+[data-testid="stVerticalBlockBorderWrapper"] { background: var(--panel); border: 1px solid var(--line) !important; border-radius: 0 !important; }
+.card-title { font-size: 13px; font-weight: 600; color: var(--head); letter-spacing: 0.02em; }
+.card-desc { font-size: 11.5px; color: var(--muted); margin: 2px 0 8px 0; }
+
+/* ── KPI ──────────────────────────────────────────────────── */
+.kpis { display: flex; flex-wrap: wrap; background: var(--panel); border: 1px solid var(--line); margin-bottom: 18px; }
+.kpi { flex: 1 1 200px; padding: 14px 18px; border-right: 1px solid var(--line); border-top: 3px solid var(--line-strong); }
+.kpi:last-child { border-right: none; }
+.kpi.pos { border-top-color: var(--pos); }
+.kpi.warn { border-top-color: var(--warn); }
+.kpi.neg { border-top-color: var(--neg); }
+.kpi-k { font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.kpi-v { font-family: var(--mono); font-size: 26px; font-weight: 600; color: var(--ink); margin-top: 6px; letter-spacing: -0.01em; }
+.kpi.pos .kpi-v { color: var(--pos); }
+.kpi.warn .kpi-v { color: var(--warn); }
+.kpi.neg .kpi-v { color: var(--neg); }
+.kpi-s { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+/* ── Tableaux ─────────────────────────────────────────────── */
+.tbl-wrap { background: var(--panel); border: 1px solid var(--line); overflow-x: auto; }
+table.fin { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+table.fin thead th {
+    background: var(--thead); color: var(--head); text-align: left; font-size: 10px; font-weight: 600;
+    letter-spacing: 0.1em; text-transform: uppercase; padding: 9px 14px; border-bottom: 2px solid var(--head); white-space: nowrap;
+}
+table.fin td { padding: 8px 14px; border-bottom: 1px solid var(--rowline); font-size: 12.5px; color: var(--ink); }
+table.fin tbody tr:last-child td { border-bottom: none; }
+table.fin tbody tr:hover td { background: var(--hover); }
+table.fin .num { text-align: right; font-family: var(--mono); font-size: 12.5px; white-space: nowrap; }
+table.fin .code { font-family: var(--mono); font-size: 10.5px; color: var(--muted); }
+table.fin .lbl { font-family: var(--sans); font-size: 12.5px; }
+table.fin .strong { font-weight: 600; color: var(--head); }
+table.fin .pos { color: var(--pos); font-weight: 600; }
+table.fin .warn { color: var(--warn); font-weight: 600; }
+table.fin .neg { color: var(--neg); font-weight: 600; }
+
+/* ── Widgets ──────────────────────────────────────────────── */
+[data-testid="stWidgetLabel"] p, .stTextInput label p, .stCheckbox label p { font-size: 12px; color: var(--ink); }
+[data-testid="stWidgetLabel"] p { font-weight: 500; letter-spacing: 0.02em; }
+
+.stTextInput input, .stNumberInput input, .stDateInput input, .stTextArea textarea {
+    background: var(--panel) !important; color: var(--ink) !important; border: 1px solid var(--line-strong) !important;
+    border-radius: 0 !important; font-family: var(--mono); font-size: 13px;
+}
+.stTextInput input:focus, .stNumberInput input:focus, .stTextArea textarea:focus {
+    border-color: var(--blue) !important; box-shadow: 0 0 0 1px var(--blue) !important;
+}
+[data-baseweb="input"], [data-baseweb="base-input"] { border-radius: 0 !important; background: var(--panel) !important; }
+[data-baseweb="input"] { border: 1px solid var(--line-strong) !important; box-shadow: none !important; }
+[data-baseweb="input"]:focus-within { border-color: var(--blue) !important; box-shadow: 0 0 0 1px var(--blue) !important; }
+.stTextInput input, .stTextInput input:focus { outline: none !important; border: none !important; box-shadow: none !important; }
+
+/* ── Lignes de statut (sans bandeau coloré) ───────────────── */
+.stat { display: flex; align-items: baseline; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--line); margin-bottom: 4px; }
+.stat-tag { font-family: var(--mono); font-size: 9.5px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); border: 1px solid currentColor; padding: 2px 7px; min-width: 66px; text-align: center; }
+.stat.pos .stat-tag { color: var(--pos); }
+.stat.neg .stat-tag { color: var(--neg); }
+.stat.warn .stat-tag { color: var(--warn); }
+.stat-txt { font-size: 12.5px; color: var(--ink); }
+
+.stButton button, [data-testid="stBaseButton-secondary"], [data-testid="stBaseButton-primary"] {
+    border-radius: 0 !important; font-size: 11.5px; font-weight: 600; letter-spacing: 0.1em;
+    text-transform: uppercase; padding: 0.55rem 1.4rem; transition: background 0.12s ease, border-color 0.12s ease;
+}
+.stButton button[kind="secondary"], [data-testid="stBaseButton-secondary"] { background: var(--panel); border: 1px solid var(--line-strong); color: var(--head); }
+.stButton button[kind="secondary"]:hover, [data-testid="stBaseButton-secondary"]:hover { border-color: var(--head); background: var(--hover); color: var(--head); }
+.stButton button[kind="primary"], [data-testid="stBaseButton-primary"] { background: var(--primary); border: 1px solid var(--primary); color: var(--onprimary); }
+.stButton button[kind="primary"] p, [data-testid="stBaseButton-primary"] p { color: var(--onprimary); }
+.stButton button[kind="primary"]:hover, [data-testid="stBaseButton-primary"]:hover { background: var(--primary-hover); border-color: var(--primary-hover); color: var(--onprimary); }
+
+[data-testid="stCheckbox"] label p { font-size: 12.5px; }
+[data-testid="stFileUploader"] section { background: var(--soft); border: 1px dashed var(--line-strong); border-radius: 0; padding: 0.55rem; }
+[data-testid="stFileUploader"] section:hover { border-color: var(--blue); }
+[data-testid="stFileUploader"] button { border-radius: 0; }
+[data-testid="stFileUploaderDropzoneInstructions"] span, [data-testid="stFileUploaderDropzoneInstructions"] small { font-size: 11px; }
+
+[data-testid="stAlert"] { border-radius: 0; border: 1px solid var(--line); border-left-width: 3px; font-size: 13px; }
+[data-testid="stProgress"] > div > div { background: var(--thead); border-radius: 0; }
+[data-testid="stProgress"] > div > div > div { background: var(--blue); border-radius: 0; }
+.status-line { font-family: var(--mono); font-size: 11.5px; color: var(--muted); margin: 4px 0 10px 0; }
+
+[data-testid="stCaptionContainer"] { color: var(--muted) !important; font-size: 11.5px; }
+[data-testid="stPlotlyChart"] { background: var(--panel); border: 1px solid var(--line); padding: 8px; }
+hr { border-color: var(--line) !important; }
+
+@media (max-width: 768px) {
+    .block-container { padding: 1rem 1rem 3rem 1rem; }
+    .ph-title { font-size: 21px; }
+    .sec-desc { display: none; }
+}
+</style>
+"""
+
+
+# ════════════════════════════════════════════════════════════════════════════
+#  POINT D'ENTRÉE
+# ════════════════════════════════════════════════════════════════════════════
 
 def afficher_interface():
     st.set_page_config(page_title="Audit Operator", layout="wide")
 
-    _cfg()
+    # Initialisation du thème par défaut
+    if "theme_mode" not in st.session_state:
+        st.session_state["theme_mode"] = "dark"
 
-    st.sidebar.markdown("""
-    <div style="padding: 8px 0 18px 0;">
-        <div style="font-size: 11px; letter-spacing: 3px; color: #72c9e4;">
-            Adam Khazani Ahsaini
-        </div>
-        <div style="font-size: 21px; font-weight: 600; color: #e7eaed;">
-            AUDIT OPERATOR
-        </div>
-        <div style="font-size: 10px; letter-spacing: 1px; color: #89959d;">
-            ÉVALUATION DE MODÈLES PRÉDICTIFS
-        </div>
+    st.markdown(CSS.replace("/*ROOT*/", apply_theme()), unsafe_allow_html=True)
+
+    cfg = _cfg()
+
+    st.sidebar.markdown(_h("""
+    <div>
+        <div class="sb-brand">AUDIT OPERATOR</div>
+        <div class="sb-sub">Validation des modèles<br>de VaR et d'Expected Shortfall</div>
+        <div class="sb-author">Adam Khazani Ahsaini</div>
     </div>
-    """, unsafe_allow_html=True)
+    """), unsafe_allow_html=True)
 
     st.sidebar.markdown("---")
-
+    st.sidebar.markdown('<div class="sb-label">Navigation</div>', unsafe_allow_html=True)
     menu = st.sidebar.radio(
-        "WORKSPACE",
+        "Navigation",
         ["Audit Comparatif", "Audit Unitaire", "Config"],
-        label_visibility="visible",
+        label_visibility="collapsed",
     )
 
     st.sidebar.markdown("---")
-    st.sidebar.caption("ACTIVE MARKET")
-    cfg = _cfg()
-    st.sidebar.markdown(f"**{cfg['ticker']}**")
+
+    # --- BOUTON DE CHANGEMENT DE THÈME ---
+    is_dark = st.sidebar.toggle("Thème sombre", value=(st.session_state["theme_mode"] == "dark"))
+    if is_dark and st.session_state["theme_mode"] != "dark":
+        st.session_state["theme_mode"] = "dark"
+        st.rerun()
+    elif not is_dark and st.session_state["theme_mode"] != "light":
+        st.session_state["theme_mode"] = "light"
+        st.rerun()
+    # -------------------------------------
+
+    st.sidebar.markdown("---")
     date_fin = cfg["end_date"] or datetime.date.today()
-    st.sidebar.caption(f"{cfg['start_date']} — {date_fin}")
+    st.sidebar.markdown(_h(f"""
+    <div class="sb-label">Marché actif</div>
+    <div class="sb-tick">{_esc(cfg['ticker'])}</div>
+    <div class="sb-per">{_esc(cfg['start_date'])} → {_esc(date_fin)}</div>
+    """), unsafe_allow_html=True)
 
-    st.markdown("""
-    <style>
-    :root {
-        --background: #111519;
-        --sidebar: #0d1216;
-        --surface: #181f25;
-        --surface-hover: #202a31;
-        --border: #2d3942;
-        --text: #e7edf2;
-        --muted: #91a0ac;
-        --accent: #70c9c0;
-        --accent-hover: #8cddd3;
-        --danger: #ef777e;
-        --success: #75c9a5;
-    }
-
-    .stApp {
-        background: var(--background);
-        color: var(--text);
-    }
-
-    [data-testid="stHeader"] {
-        background: rgba(17, 21, 25, 0.95);
-    }
-
-    .block-container {
-        max-width: 1500px;
-        padding-top: 2.2rem;
-        padding-bottom: 3rem;
-    }
-
-    html, body, [class*="css"] {
-        font-family: Inter, -apple-system, BlinkMacSystemFont,
-                     "Segoe UI", sans-serif;
-    }
-
-    h1, h2, h3, h4 {
-        color: var(--text) !important;
-        font-weight: 600 !important;
-        letter-spacing: -0.035em;
-    }
-
-    h1 {
-        font-size: 1.9rem !important;
-        line-height: 1.3 !important;
-    }
-
-    h2 {
-        font-size: 1.4rem !important;
-        margin-top: 1.8rem !important;
-    }
-
-    h3 {
-        font-size: 1.08rem !important;
-    }
-
-    p, label, li {
-        color: var(--text);
-    }
-
-    [data-testid="stCaptionContainer"] {
-        color: var(--muted) !important;
-        font-size: 0.82rem;
-    }
-
-    [data-testid="stSidebar"] {
-        background: var(--sidebar);
-        border-right: 1px solid var(--border);
-    }
-
-    [data-testid="stSidebar"] > div {
-        padding-top: 1.5rem;
-    }
-
-    [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p {
-        line-height: 1.55;
-    }
-
-    [data-testid="stSidebar"] hr {
-        margin: 1.4rem 0;
-        border-color: var(--border) !important;
-    }
-
-    [data-testid="stSidebar"] [role="radiogroup"] {
-        gap: 0.35rem;
-    }
-
-    [data-testid="stSidebar"] [role="radiogroup"] label {
-        padding: 0.45rem 0.6rem;
-        border-radius: 6px;
-        transition: background 0.15s ease;
-    }
-
-    [data-testid="stSidebar"] [role="radiogroup"] label:hover {
-        background: var(--surface-hover);
-    }
-
-    [data-testid="stVerticalBlockBorderWrapper"] {
-        background: var(--surface);
-        border: 1px solid var(--border) !important;
-        border-radius: 10px !important;
-        transition: border-color 0.18s ease;
-    }
-
-    [data-testid="stVerticalBlockBorderWrapper"]:hover {
-        border-color: #43545e !important;
-    }
-
-    [data-testid="stMetric"] {
-        background: var(--surface);
-        border: 1px solid var(--border);
-        border-radius: 10px;
-        padding: 1rem 1.1rem;
-    }
-
-    [data-testid="stMetricLabel"] {
-        color: var(--muted) !important;
-        font-size: 0.8rem !important;
-    }
-
-    [data-testid="stMetricValue"] {
-        color: var(--accent) !important;
-        font-size: 1.65rem !important;
-        font-weight: 600 !important;
-    }
-
-    [data-testid="stMetricDelta"] {
-        font-size: 0.78rem !important;
-    }
-
-    .stTextInput input,
-    .stNumberInput input,
-    .stDateInput input,
-    .stTextArea textarea {
-        background: #12181d !important;
-        color: var(--text) !important;
-        border: 1px solid var(--border) !important;
-        border-radius: 7px !important;
-    }
-
-    .stTextInput input:focus,
-    .stNumberInput input:focus,
-    .stDateInput input:focus,
-    .stTextArea textarea:focus {
-        border-color: var(--accent) !important;
-        box-shadow: 0 0 0 1px var(--accent) !important;
-    }
-
-    .stButton button {
-        border-radius: 7px;
-        border: 1px solid var(--border);
-        background: var(--surface);
-        color: var(--text);
-        font-weight: 500;
-        transition: all 0.18s ease;
-    }
-
-    .stButton button:hover {
-        border-color: var(--accent);
-        color: var(--accent);
-        background: var(--surface-hover);
-    }
-
-    .stButton button[kind="primary"] {
-        background: var(--accent);
-        color: #101819;
-        border-color: var(--accent);
-        font-weight: 650;
-    }
-
-    .stButton button[kind="primary"]:hover {
-        background: var(--accent-hover);
-        border-color: var(--accent-hover);
-        color: #101819;
-    }
-
-    [data-testid="stCheckbox"] label {
-        font-size: 0.84rem;
-    }
-
-    [data-testid="stFileUploader"] section {
-        background: #131a1f;
-        border: 1px dashed #40505a;
-        border-radius: 8px;
-        padding: 0.6rem;
-    }
-
-    [data-testid="stFileUploader"] section:hover {
-        border-color: var(--accent);
-    }
-
-    [data-testid="stFileUploader"] button {
-        border-radius: 6px;
-    }
-
-    [data-testid="stDataFrame"] {
-        border: 1px solid var(--border);
-        border-radius: 9px;
-        overflow: hidden;
-    }
-
-    [data-testid="stAlert"] {
-        border-radius: 8px;
-    }
-
-    [data-testid="stProgressBar"] > div {
-        background: var(--surface-hover);
-        border-radius: 99px;
-    }
-
-    [data-testid="stProgressBar"] > div > div {
-        background: var(--accent);
-        border-radius: 99px;
-    }
-
-    hr {
-        border-color: var(--border) !important;
-    }
-
-    @media (max-width: 768px) {
-        .block-container {
-            padding: 1.2rem 1rem 2rem;
-        }
-
-        h1 {
-            font-size: 1.55rem !important;
-        }
-    }
-    </style>
-    """, unsafe_allow_html=True)
+    st.sidebar.markdown("---")
+    st.sidebar.markdown(
+        '<div class="sb-foot">Données : Yahoo Finance<br>Tests : Kupiec · Christoffersen · DQ<br>Cadre : Bâle / FRTB</div>',
+        unsafe_allow_html=True,
+    )
 
     if menu == "Audit Comparatif":
         page_audit_comparatif()
