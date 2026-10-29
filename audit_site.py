@@ -1226,7 +1226,10 @@ def afficher_interface():
 
     st.sidebar.markdown("---")
     st.sidebar.markdown(
-        '<div class="sb-foot">Données : Yahoo Finance<br>Tests : Kupiec · Christoffersen · DQ<br>Cadre : Bâle / FRTB</div>',
+        '<div class="sb-foot">Données : Yahoo Finance<br>'
+        'VaR : Kupiec · Christoffersen · DQ<br>'
+        'ES : McNeil-Frey · Acerbi-Szekely<br>'
+        'Cadre : Bâle / FRTB</div>',
         unsafe_allow_html=True,
     )
 
