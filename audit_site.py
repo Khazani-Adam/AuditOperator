@@ -123,7 +123,7 @@ def _theme_opt(name, default):
 
 
 def apply_theme():
-    mode = st.session_state.get("theme_mode", "dark")
+    mode = st.session_state.get("theme_mode", "light")
     section_name = f"theme_{mode}"
     cfg_theme = _file_theme(section_name)
 
@@ -943,7 +943,34 @@ html, body, [class*="css"], .stApp { font-family: var(--sans); }
 [data-testid="stSidebar"] .sb-per { color: #8DA2BC; font-family: var(--mono); font-size: 11px; margin-top: 4px; }
 [data-testid="stSidebar"] .sb-foot { color: #587190; font-size: 10px; line-height: 1.6; }
 
+[data-testid="stSidebar"] [data-testid="stWidgetLabel"] p,
+[data-testid="stSidebar"] [data-testid="stCheckbox"] label p,
+[data-testid="stSidebar"] label p,
+[data-testid="stSidebar"] [data-testid="stToggle"] p {
+    color: #C4CFDD !important;
+    font-size: 12.5px;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+}
+
 [data-testid="stSidebar"] [role="radiogroup"] { gap: 2px; }
+[data-testid="stSidebar"] [data-testid="stCheckbox"] label,
+[data-testid="stSidebar"] [data-testid="stToggle"] label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+[data-testid="stSidebar"] [data-testid="stCheckbox"] label p,
+[data-testid="stSidebar"] [data-testid="stToggle"] label p {
+    margin: 0;
+    line-height: 1;
+}
+
+[data-testid="stSidebar"] [data-baseweb="checkbox"] > div:first-child {
+    margin-top: 0;
+    align-self: center;
+}
 [data-testid="stSidebar"] [role="radiogroup"] label {
     padding: 9px 12px; border-radius: 0; border: none;
     border-left: 2px solid transparent; background: transparent; width: 100%;
@@ -1084,7 +1111,7 @@ def afficher_interface():
     st.set_page_config(page_title="Audit Operator", layout="wide")
 
     if "theme_mode" not in st.session_state:
-        st.session_state["theme_mode"] = "dark"
+        st.session_state["theme_mode"] = "light"
 
     st.markdown(CSS.replace("/*ROOT*/", apply_theme()), unsafe_allow_html=True)
 
