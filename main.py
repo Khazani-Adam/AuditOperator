@@ -1,4 +1,6 @@
 import warnings
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -9,7 +11,8 @@ from scipy.stats import chi2
 
 warnings.filterwarnings("ignore", category=StartingValueWarning)
 
-CONFIG = {
+# main.py
+DEFAULT_CONFIG = {
     "ticker": "^GSPC",
     "start_date": "2001-01-01",
     "end_date": None,
@@ -20,6 +23,9 @@ CONFIG = {
     "lags_dq": 4,
     "n_boot": 10000,
 }
+
+# keep the old name as an alias so main.py's __main__ block still works
+CONFIG = DEFAULT_CONFIG
 
 
 def stock_getter(ticker="AAPL", start=CONFIG["start_date"], end=CONFIG["end_date"]):
@@ -46,35 +52,29 @@ def es_standardized(dist, params, alpha, n=2000):
 
 
 def dq_test(returns, var_series, alpha=0.01, lags=4):
+    returns    = np.asarray(returns, dtype=float)
+    var_series = np.asarray(var_series, dtype=float)
     hits = (returns < -var_series).astype(float) - alpha
     n = len(hits)
     if n <= lags + 10:
         return np.nan, np.nan
 
-    cols = [np.ones(n - lags), var_series.iloc[lags:].values]
-    for lag in range(1, lags + 1):
-        cols.append(hits.iloc[lags - lag : n - lag].values)
+    # Lagged hits at t-1..t-lags, aligned with Y = hits[lags:].
+    lagged = [hits[lags - k : n - k] for k in range(1, lags + 1)]
+    X = np.column_stack([np.ones(n - lags), var_series[lags:]] + lagged)
+    Y = hits[lags:]
 
-    X = np.column_stack(cols)
-    Y = hits.iloc[lags:].values
-
-    if not np.all(np.isfinite(X)) or not np.all(np.isfinite(Y)):
+    if not (np.all(np.isfinite(X)) and np.all(np.isfinite(Y))):
+        return np.nan, np.nan
+    if np.linalg.matrix_rank(X) < X.shape[1]:
         return np.nan, np.nan
 
-    norms = np.linalg.norm(X, axis=0)
-    safe_norms = np.where(norms > 1e-10, norms, 1.0)
+    beta = np.linalg.lstsq(X, Y, rcond=None)[0]
+    XtX  = X.T @ X
+    stat = (beta @ XtX @ beta) / (alpha * (1.0 - alpha))
+    df   = X.shape[1]                     # = lags + 2
 
-    with np.errstate(all="ignore"):
-        X = X / safe_norms
-        rank = np.linalg.matrix_rank(X)
-        if rank == 0:
-            return np.nan, np.nan
-        beta = np.linalg.lstsq(X, Y, rcond=None)[0]
-        preds = X @ beta
-        stat = np.sum(preds**2) / (alpha * (1.0 - alpha))
-
-    pval = 1.0 - chi2.cdf(stat, df=rank)
-    return float(stat), float(pval)
+    return float(stat), float(chi2.sf(stat, df))
 
 
 def mcneil_frey_es_bootstrap(
@@ -248,19 +248,16 @@ def run_backtest(
                 if last_valid_params is not None:
                     current_params = last_valid_params
                 else:
-                    current_params = pd.Series(
-                        [0.05, 0.05, 0.10, 0.80, 5.0]
-                        if dist_type == "studentst"
-                        else [0.05, 0.05, 0.10, 0.80, 5.0, 0.0],
-                        index=[
-                            "omega",
-                            "alpha[1]",
-                            "beta[1]",
-                            "gamma[1]",
-                            "nu",
-                            "lambda",
-                        ][: 5 + (1 if dist_type == "skewt" else 0)],
-                    )
+                    if dist_type == "studentst":
+                        current_params = pd.Series(
+                            [0.05, 0.05, 0.85, 5.0],
+                            index=["omega", "alpha[1]", "beta[1]", "nu"],
+                        )
+                    else:
+                        current_params = pd.Series(
+                            [0.05, 0.05, 0.05, 0.85, 5.0, 0.0],
+                            index=["omega", "alpha[1]", "gamma[1]", "beta[1]", "eta", "lambda"],
+                        )
 
             current_model = arch_model(
                 test_block * 100, p=p, o=o, q=q, dist=dist_type, mean="Zero"
