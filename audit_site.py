@@ -12,10 +12,6 @@ from streamlit.web import cli as stcli
 
 from main import CONFIG, run_backtest, stock_getter
 
-# ════════════════════════════════════════════════════════════════════════════
-#  CONSTANTES
-# ════════════════════════════════════════════════════════════════════════════
-
 STANDARD_MODELS = {
     "historical": "Historique (HS)",
     "garch_t": "GARCH-t",
@@ -39,8 +35,8 @@ METRIC_LABELS = {
     "exc_2008_crisis": "Exceptions · crise 2008",
 }
 
-MODEL_COLORS = []  # rempli par apply_theme() à partir de la config
-C = {}  # rempli par apply_theme() à partir de .streamlit/config.toml
+MODEL_COLORS = []
+C = {}
 
 
 def _norm_hex(h, default):
@@ -74,12 +70,12 @@ def _lum(h):
     def ch(v):
         v = v / 255
         return v / 12.92 if v <= 0.03928 else ((v + 0.055) / 1.055) ** 2.4
+
     r, g, b = _rgb(h)
     return 0.2126 * ch(r) + 0.7152 * ch(g) + 0.0722 * ch(b)
 
 
 def _file_theme(section_name="theme"):
-    """Lit une section spécifique (ex: [theme], [theme_dark]) d'un config.toml."""
     from pathlib import Path
     root = Path(__file__).resolve().parent
     for cand in (root / ".streamlit" / "config.toml", root / "config.toml", root / "Config.toml"):
@@ -104,8 +100,6 @@ def _file_theme(section_name="theme"):
 
 
 def _series_colors(primary, ink, panel, n=6):
-    """Palette de séries : 1re couleur = textColor, les autres = teinte de primaryColor
-    tournée par pas réguliers, avec une luminosité adaptée au fond des panneaux."""
     import colorsys
     r, g, b = [x / 255 for x in _rgb(primary)]
     h, _, sat = colorsys.rgb_to_hls(r, g, b)
@@ -129,16 +123,10 @@ def _theme_opt(name, default):
 
 
 def apply_theme():
-    """Lit le thème depuis le session_state et le Config.toml."""
-
-    # 1. Récupération du mode actuel (dark par défaut)
     mode = st.session_state.get("theme_mode", "dark")
     section_name = f"theme_{mode}"
-
-    # 2. Lecture des couleurs depuis le Config.toml
     cfg_theme = _file_theme(section_name)
 
-    # 3. Application des couleurs (avec fallback si le fichier est vide)
     if cfg_theme:
         bg = _norm_hex(cfg_theme.get("backgroundColor"), "#F2F4F7")
         panel = _norm_hex(cfg_theme.get("secondaryBackgroundColor"), "#FFFFFF")
@@ -146,19 +134,17 @@ def apply_theme():
         primary = _norm_hex(cfg_theme.get("primaryColor"), "#0B1F3A")
         primary_set = True
     else:
-        # Fallback sur la logique d'origine si les sections n'existent pas
         bg = _theme_opt("backgroundColor", "#F2F4F7")
         panel = _theme_opt("secondaryBackgroundColor", "#FFFFFF")
         ink = _theme_opt("textColor", "#121B2B")
         primary_set = bool(st.get_option("theme.primaryColor") or _file_theme().get("primaryColor"))
         primary = _theme_opt("primaryColor", "#0B1F3A")
 
-    # --- LE RESTE DE VOTRE FONCTION RESTE STRICTEMENT IDENTIQUE ---
     dark_panel = _lum(panel) < 0.4
     side = primary if _lum(primary) < 0.02 else min((ink, primary), key=_lum)
     if _lum(side) > 0.08:
         side = _mix(primary, "#000000", 0.7)
-    if _lum(ink) > 0.5:  # thème sombre : barre latérale plus sombre que le fond
+    if _lum(ink) > 0.5:
         side = _mix(bg, "#000000", 0.45)
     if _lum(primary) > 0.15:
         side_accent = primary
@@ -203,10 +189,6 @@ def apply_theme():
     )
 
 
-# ════════════════════════════════════════════════════════════════════════════
-#  DONNÉES & LOGIQUE (inchangées)
-# ════════════════════════════════════════════════════════════════════════════
-
 def _cfg():
     if "cfg" not in st.session_state:
         st.session_state["cfg"] = dict(CONFIG)
@@ -219,9 +201,7 @@ def _get_returns_cached(ticker, start, end):
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def _run_standard_model_cached(ticker, start, end, model_type,
-                               window_size, refit_freq,
-                               alpha_var, alpha_es):
+def _run_standard_model_cached(ticker, start, end, model_type, window_size, refit_freq, alpha_var, alpha_es):
     returns = _get_returns_cached(ticker, start, end)
     return run_backtest(
         returns,
@@ -282,7 +262,6 @@ def _check_period(cfg):
 
 def backtester(selected_standards, selected_customs_dict, progress_callback=None):
     cfg = _cfg()
-
     tasks = []
     for code, label in STANDARD_MODELS.items():
         if code in selected_standards:
@@ -297,9 +276,7 @@ def backtester(selected_standards, selected_customs_dict, progress_callback=None
     for i, (m_type, display_name, c_data) in enumerate(tasks):
         pct_depart = int((i / total) * 100)
         if progress_callback:
-            progress_callback(
-                pct_depart, f"Calcul du modèle « {display_name} » en cours"
-            )
+            progress_callback(pct_depart, f"Calcul du modèle « {display_name} » en cours")
 
         if m_type == "custom":
             returns = _get_returns_cached(cfg["ticker"], cfg["start_date"], cfg["end_date"])
@@ -321,13 +298,10 @@ def backtester(selected_standards, selected_customs_dict, progress_callback=None
             )
 
         dict_outputs[display_name] = res
-
         clean_res = {
             k: v for k, v in res.items()
-            if k not in [
-                "var_series", "es_frtb_series", "test_returns",
-                "rolling_250", "eta_hist", "lambda_hist", "refit_dates",
-            ]
+            if k not in ["var_series", "es_frtb_series", "test_returns", "rolling_250", "eta_hist", "lambda_hist",
+                         "refit_dates"]
         }
         clean_res["model"] = display_name
         results.append(clean_res)
@@ -351,12 +325,7 @@ def is_valid_ticker(symbol: str) -> bool:
         return False
 
 
-# ════════════════════════════════════════════════════════════════════════════
-#  PRIMITIVES UI
-# ════════════════════════════════════════════════════════════════════════════
-
 def _h(markup: str) -> str:
-    """Aplatit le HTML : évite que Markdown ne l'interprète comme du code."""
     return "".join(line.strip() for line in markup.splitlines())
 
 
@@ -395,7 +364,6 @@ def panel_label(text):
 
 
 def status_line(kind, text):
-    """Ligne de statut sobre (remplace les bandeaux colorés st.success/error/warning)."""
     tag = {"pos": "Valide", "neg": "Erreur", "warn": "Attention"}.get(kind, "Info")
     _render(
         f'<div class="stat {kind}"><span class="stat-tag">{tag}</span>'
@@ -423,7 +391,6 @@ def context_ribbon():
 
 
 def kpi_strip(items):
-    """items : liste de (label, valeur, sous-texte, ton) ; ton ∈ pos/warn/neg/''."""
     cells = ""
     for label, value, sub, tone in items:
         cells += (
@@ -447,7 +414,6 @@ def _fmt_scalar(f, key=""):
 
 
 def _fmt(key, v):
-    # Tuples / listes / tableaux (ex. intervalles de confiance) : [a ; b]
     if isinstance(v, (tuple, list, np.ndarray)):
         try:
             vals = [float(x) for x in v]
@@ -488,9 +454,7 @@ def render_metrics_table(df_summary, compact=False):
         cells = ""
         for m in models:
             raw = df_summary.loc[key, m]
-            cells += (
-                f'<td class="num {_cell_tone(key, raw)}">{_esc(_fmt(key, raw))}</td>'
-            )
+            cells += f'<td class="num {_cell_tone(key, raw)}">{_esc(_fmt(key, raw))}</td>'
         rows += f'<tr><td class="lbl">{_esc(label)}</td>{code_td}{cells}</tr>'
     _render(
         f'<div class="tbl-wrap"><table class="fin"><thead><tr><th>Métrique</th>'
@@ -611,10 +575,6 @@ def _make_progress():
     return cb, clear
 
 
-# ════════════════════════════════════════════════════════════════════════════
-#  SYNTHÈSE COMPARATIVE
-# ════════════════════════════════════════════════════════════════════════════
-
 def afficher_synthese_comparative(df_summary):
     section("05", "Synthèse", "Meilleur modèle par critère d'audit")
     try:
@@ -636,12 +596,9 @@ def afficher_synthese_comparative(df_summary):
         best_exc = min(exc, key=lambda m: abs(exc[m] - target))
 
         rows = [
-            ("Précision de la VaR", "Kupiec POF", best_kupiec,
-             f"p = {kupiec[best_kupiec]:.4f}"),
-            ("Indépendance des exceptions", "Christoffersen CC", best_cc,
-             f"p = {cc[best_cc]:.4f}"),
-            ("Qualité dynamique", "Dynamic Quantile", best_dq,
-             f"p = {dq[best_dq]:.4f}"),
+            ("Précision de la VaR", "Kupiec POF", best_kupiec, f"p = {kupiec[best_kupiec]:.4f}"),
+            ("Indépendance des exceptions", "Christoffersen CC", best_cc, f"p = {cc[best_cc]:.4f}"),
+            ("Qualité dynamique", "Dynamic Quantile", best_dq, f"p = {dq[best_dq]:.4f}"),
             ("Calibration du taux d'exceptions", "Écart à la cible", best_exc,
              f"{int(exc[best_exc])} obs. · cible ≈ {target:.0f}"),
         ]
@@ -659,35 +616,27 @@ def afficher_synthese_comparative(df_summary):
         status_line("", "Synthèse automatique indisponible pour cette sélection.")
 
 
-# ════════════════════════════════════════════════════════════════════════════
-#  GESTIONNAIRE DE MODÈLES CUSTOM
-# ════════════════════════════════════════════════════════════════════════════
-
 def gestionnaire_modeles_custom(show_checkboxes=True):
     if "custom_models" not in st.session_state:
         st.session_state["custom_models"] = {}
 
     with st.container(border=True):
         panel_label("Importer un modèle externe")
-        custom_name = st.text_input(
-            "Nom du modèle",
-            placeholder="ex. RiskMetrics_2026",
-            key="custom_model_name",
-        )
+        custom_name = st.text_input("Nom du modèle", placeholder="ex. RiskMetrics_2026", key="custom_model_name")
 
         c1, c2, c3 = st.columns(3, gap="small")
         with c1:
             panel_label("A · Série VaR")
-            file_var = st.file_uploader("Série VaR", type=["csv", "xlsx", "parquet"],
-                                        key="add_var", label_visibility="collapsed")
+            file_var = st.file_uploader("Série VaR", type=["csv", "xlsx", "parquet"], key="add_var",
+                                        label_visibility="collapsed")
         with c2:
             panel_label("B · Série Expected Shortfall")
-            file_es = st.file_uploader("Série ES", type=["csv", "xlsx", "parquet"],
-                                       key="add_es", label_visibility="collapsed")
+            file_es = st.file_uploader("Série ES", type=["csv", "xlsx", "parquet"], key="add_es",
+                                       label_visibility="collapsed")
         with c3:
             panel_label("C · Série de volatilité")
-            file_vol = st.file_uploader("Série de volatilité", type=["csv", "xlsx", "parquet"],
-                                        key="add_vol", label_visibility="collapsed")
+            file_vol = st.file_uploader("Série de volatilité", type=["csv", "xlsx", "parquet"], key="add_vol",
+                                        label_visibility="collapsed")
 
         st.caption("Formats acceptés : CSV, XLSX, Parquet · index = dates, première colonne = valeurs.")
 
@@ -716,18 +665,12 @@ def gestionnaire_modeles_custom(show_checkboxes=True):
                     st.rerun()
 
     if st.session_state["custom_models"]:
-        panel_label(
-            "Modèles enregistrés · sélection pour l'audit" if show_checkboxes
-            else "Modèles enregistrés"
-        )
-
+        panel_label("Modèles enregistrés · sélection pour l'audit" if show_checkboxes else "Modèles enregistrés")
         cols_custom_select = {}
         for c_name in list(st.session_state["custom_models"].keys()):
             with st.container(border=True):
                 if show_checkboxes:
-                    col_info, col_chk, col_del = st.columns(
-                        [3, 2, 1], vertical_alignment="center",
-                    )
+                    col_info, col_chk, col_del = st.columns([3, 2, 1], vertical_alignment="center")
                 else:
                     col_info, col_del = st.columns([4, 1], vertical_alignment="center")
 
@@ -739,22 +682,16 @@ def gestionnaire_modeles_custom(show_checkboxes=True):
 
                 if show_checkboxes:
                     with col_chk:
-                        cols_custom_select[c_name] = st.checkbox(
-                            "Inclure dans l'audit", value=True, key=f"chk_{c_name}"
-                        )
+                        cols_custom_select[c_name] = st.checkbox("Inclure dans l'audit", value=True,
+                                                                 key=f"chk_{c_name}")
 
                 with col_del:
                     if st.button("Retirer", key=f"del_{c_name}", use_container_width=True):
                         del st.session_state["custom_models"][c_name]
                         st.rerun()
         return cols_custom_select
-
     return {}
 
-
-# ════════════════════════════════════════════════════════════════════════════
-#  PAGES
-# ════════════════════════════════════════════════════════════════════════════
 
 def page_audit_comparatif():
     cfg = _cfg()
@@ -797,9 +734,7 @@ def page_audit_comparatif():
             else:
                 cb, clear = _make_progress()
                 try:
-                    df_summary, dict_outputs = backtester(
-                        selected_standards, selected_customs, progress_callback=cb,
-                    )
+                    df_summary, dict_outputs = backtester(selected_standards, selected_customs, progress_callback=cb)
                 except ValueError as e:
                     clear()
                     status_line("neg", str(e))
@@ -817,9 +752,7 @@ def page_audit_comparatif():
         section("04", "Résultats", f"{res['ticker']} · tableau comparatif des métriques")
         render_metrics_table(res["df"])
         st.caption("Vert : H₀ non rejetée (p > 5 %) · Rouge : H₀ rejetée (p ≤ 5 %).")
-
         afficher_synthese_comparative(res["df"])
-
         fig = build_overlay_chart(res["out"], res["conf"])
         if fig is not None:
             section("06", "VaR comparées", f"Seuils VaR {res['conf']} superposés aux rendements")
@@ -858,13 +791,9 @@ def page_audit_unitaire():
             cb, clear = _make_progress()
             selected_stds = [modele_code] if modele_code != "custom" else []
             selected_cust = (
-                {modele_choisi_label: custom_models[modele_choisi_label]}
-                if modele_code == "custom" else {}
-            )
+                {modele_choisi_label: custom_models[modele_choisi_label]} if modele_code == "custom" else {})
             try:
-                df_summary, dict_outputs = backtester(
-                    selected_stds, selected_cust, progress_callback=cb
-                )
+                df_summary, dict_outputs = backtester(selected_stds, selected_cust, progress_callback=cb)
             except ValueError as e:
                 clear()
                 status_line("neg", str(e))
@@ -901,8 +830,7 @@ def page_audit_unitaire():
          {"VERTE": "pos", "JAUNE": "warn", "ROUGE": "neg"}.get(zone.upper(), "")),
         ("Exceptions VaR", f"{n_exc}", target_txt, ""),
         ("Taux d'exceptions", f"{rate:.2f}%", f"VaR {res['conf']}", ""),
-        ("Kupiec POF · p-value", f"{kupiec_p:.4f}",
-         "H₀ non rejetée" if kupiec_p > 0.05 else "H₀ rejetée",
+        ("Kupiec POF · p-value", f"{kupiec_p:.4f}", "H₀ non rejetée" if kupiec_p > 0.05 else "H₀ rejetée",
          "pos" if kupiec_p > 0.05 else "neg"),
     ])
 
@@ -923,8 +851,7 @@ def page_audit_unitaire():
 
 
 def page_config():
-    page_header("Paramétrage", "Configuration",
-                "Instrument, période d'analyse et paramètres de backtest.")
+    page_header("Paramétrage", "Configuration", "Instrument, période d'analyse et paramètres de backtest.")
     cfg = _cfg()
 
     col_a, col_b = st.columns(2, gap="medium")
@@ -936,23 +863,18 @@ def page_config():
 
         try:
             new_start = datetime.date.fromisoformat(raw_start.strip())
-            new_end = (None if raw_end.strip().lower() == "none"
-                       else datetime.date.fromisoformat(raw_end.strip()))
+            new_end = (None if raw_end.strip().lower() == "none" else datetime.date.fromisoformat(raw_end.strip()))
         except ValueError:
-            status_line("neg", "Format invalide, utilisez AAAA-MM-JJ. "
-                     "Les dates précédentes sont conservées.")
+            status_line("neg", "Format invalide, utilisez AAAA-MM-JJ. Les dates précédentes sont conservées.")
         else:
             end_eff = new_end or datetime.date.today()
             jours_bourse = (end_eff - new_start).days * 252 / 365
             if end_eff <= new_start:
-                status_line("neg", "La date de fin doit être postérieure à la date de début. "
-                         "Les dates précédentes sont conservées.")
+                status_line("neg",
+                            "La date de fin doit être postérieure à la date de début. Les dates précédentes sont conservées.")
             elif jours_bourse <= cfg["window_size"]:
                 status_line("neg",
-                    f"Période trop courte : ~{int(jours_bourse)} jours de bourse "
-                    f"pour une fenêtre de {cfg['window_size']}. "
-                    "Les dates précédentes sont conservées."
-                )
+                            f"Période trop courte : ~{int(jours_bourse)} jours de bourse pour une fenêtre de {cfg['window_size']}. Les dates précédentes sont conservées.")
             else:
                 cfg["start_date"] = new_start
                 cfg["end_date"] = new_end
@@ -980,10 +902,6 @@ def page_config():
     ])
 
 
-# ════════════════════════════════════════════════════════════════════════════
-#  STYLE
-# ════════════════════════════════════════════════════════════════════════════
-
 CSS = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
@@ -997,7 +915,6 @@ CSS = """
 html, body, [class*="css"], .stApp { font-family: var(--sans); }
 .stApp { background: var(--bg); color: var(--ink); }
 
-/* Couleurs forcées : indépendantes du thème clair/sombre de Streamlit ou du navigateur */
 [data-testid="stMain"] p, [data-testid="stMain"] label, [data-testid="stMain"] li,
 [data-testid="stMain"] span, section.main p, section.main label, section.main span { color: var(--ink); }
 [data-testid="stMain"] [data-testid="stCaptionContainer"] *, section.main [data-testid="stCaptionContainer"] * { color: var(--muted) !important; }
@@ -1015,7 +932,6 @@ html, body, [class*="css"], .stApp { font-family: var(--sans); }
 
 .block-container { max-width: 1480px; padding: 1.4rem 2.2rem 4rem 2.2rem; }
 
-/* ── Sidebar ─────────────────────────────────────────────── */
 [data-testid="stSidebar"] { background: var(--side); border-right: none; }
 [data-testid="stSidebar"] * { color: #C4CFDD; }
 [data-testid="stSidebar"] hr { border-color: rgba(255,255,255,0.12) !important; margin: 1.2rem 0; }
@@ -1039,7 +955,6 @@ html, body, [class*="css"], .stApp { font-family: var(--sans); }
 [data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) * { color: #FFFFFF; font-weight: 500; }
 [data-testid="stSidebar"] [role="radiogroup"] label p { font-size: 13px; letter-spacing: 0.02em; }
 
-/* ── Radios (zone principale) : contrôle segmenté ─────────── */
 [role="radiogroup"] label > div:first-child { display: none; }
 [data-testid="stMain"] [role="radiogroup"],
 section.main [role="radiogroup"] { gap: 0; flex-wrap: wrap; }
@@ -1058,32 +973,27 @@ section.main [role="radiogroup"] label p { font-size: 12.5px; font-weight: 500; 
 [data-testid="stMain"] [role="radiogroup"] label:has(input:checked) span,
 section.main [role="radiogroup"] label:has(input:checked) span { color: var(--onprimary) !important; }
 
-/* ── En-tête de page ──────────────────────────────────────── */
 .ph { padding: 4px 0 18px 0; border-bottom: 2px solid var(--head); margin-bottom: 0; }
 .ph-kicker { font-size: 10.5px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--blue); font-weight: 600; }
 .ph-title { font-size: 26px; font-weight: 600; color: var(--head); letter-spacing: -0.01em; margin-top: 4px; }
 .ph-sub { font-size: 13px; color: var(--muted); margin-top: 6px; }
 
-/* ── Bandeau de contexte ──────────────────────────────────── */
 .ribbon { display: flex; flex-wrap: wrap; background: var(--panel); border: 1px solid var(--line); border-top: none; margin-bottom: 6px; }
 .rb-cell { flex: 1 1 130px; padding: 9px 16px; border-right: 1px solid var(--line); }
 .rb-cell:last-child { border-right: none; }
 .rb-k { font-size: 9.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
 .rb-v { font-family: var(--mono); font-size: 13px; font-weight: 500; color: var(--ink); margin-top: 2px; white-space: nowrap; }
 
-/* ── Sections ─────────────────────────────────────────────── */
 .sec { display: flex; align-items: baseline; gap: 12px; margin: 30px 0 12px 0; padding-bottom: 7px; border-bottom: 1px solid var(--line-strong); }
 .sec-num { font-family: var(--mono); font-size: 11px; color: var(--blue); font-weight: 600; }
 .sec-title { font-size: 12px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--head); }
 .sec-desc { font-size: 12px; color: var(--muted); margin-left: auto; }
 .plabel { font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); font-weight: 600; margin: 2px 0 8px 0; }
 
-/* ── Cartes ───────────────────────────────────────────────── */
 [data-testid="stVerticalBlockBorderWrapper"] { background: var(--panel); border: 1px solid var(--line) !important; border-radius: 0 !important; }
 .card-title { font-size: 13px; font-weight: 600; color: var(--head); letter-spacing: 0.02em; }
 .card-desc { font-size: 11.5px; color: var(--muted); margin: 2px 0 8px 0; }
 
-/* ── KPI ──────────────────────────────────────────────────── */
 .kpis { display: flex; flex-wrap: wrap; background: var(--panel); border: 1px solid var(--line); margin-bottom: 18px; }
 .kpi { flex: 1 1 200px; padding: 14px 18px; border-right: 1px solid var(--line); border-top: 3px solid var(--line-strong); }
 .kpi:last-child { border-right: none; }
@@ -1097,7 +1007,6 @@ section.main [role="radiogroup"] label:has(input:checked) span { color: var(--on
 .kpi.neg .kpi-v { color: var(--neg); }
 .kpi-s { font-size: 11px; color: var(--muted); margin-top: 2px; }
 
-/* ── Tableaux ─────────────────────────────────────────────── */
 .tbl-wrap { background: var(--panel); border: 1px solid var(--line); overflow-x: auto; }
 table.fin { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
 table.fin thead th {
@@ -1115,7 +1024,6 @@ table.fin .pos { color: var(--pos); font-weight: 600; }
 table.fin .warn { color: var(--warn); font-weight: 600; }
 table.fin .neg { color: var(--neg); font-weight: 600; }
 
-/* ── Widgets ──────────────────────────────────────────────── */
 [data-testid="stWidgetLabel"] p, .stTextInput label p, .stCheckbox label p { font-size: 12px; color: var(--ink); }
 [data-testid="stWidgetLabel"] p { font-weight: 500; letter-spacing: 0.02em; }
 
@@ -1131,7 +1039,6 @@ table.fin .neg { color: var(--neg); font-weight: 600; }
 [data-baseweb="input"]:focus-within { border-color: var(--blue) !important; box-shadow: 0 0 0 1px var(--blue) !important; }
 .stTextInput input, .stTextInput input:focus { outline: none !important; border: none !important; box-shadow: none !important; }
 
-/* ── Lignes de statut (sans bandeau coloré) ───────────────── */
 .stat { display: flex; align-items: baseline; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--line); margin-bottom: 4px; }
 .stat-tag { font-family: var(--mono); font-size: 9.5px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); border: 1px solid currentColor; padding: 2px 7px; min-width: 66px; text-align: center; }
 .stat.pos .stat-tag { color: var(--pos); }
@@ -1173,14 +1080,9 @@ hr { border-color: var(--line) !important; }
 """
 
 
-# ════════════════════════════════════════════════════════════════════════════
-#  POINT D'ENTRÉE
-# ════════════════════════════════════════════════════════════════════════════
-
 def afficher_interface():
     st.set_page_config(page_title="Audit Operator", layout="wide")
 
-    # Initialisation du thème par défaut
     if "theme_mode" not in st.session_state:
         st.session_state["theme_mode"] = "dark"
 
@@ -1198,6 +1100,7 @@ def afficher_interface():
 
     st.sidebar.markdown("---")
     st.sidebar.markdown('<div class="sb-label">Navigation</div>', unsafe_allow_html=True)
+
     menu = st.sidebar.radio(
         "Navigation",
         ["Audit Comparatif", "Audit Unitaire", "Config"],
@@ -1206,7 +1109,6 @@ def afficher_interface():
 
     st.sidebar.markdown("---")
 
-    # --- BOUTON DE CHANGEMENT DE THÈME ---
     is_dark = st.sidebar.toggle("Thème sombre", value=(st.session_state["theme_mode"] == "dark"))
     if is_dark and st.session_state["theme_mode"] != "dark":
         st.session_state["theme_mode"] = "dark"
@@ -1214,9 +1116,9 @@ def afficher_interface():
     elif not is_dark and st.session_state["theme_mode"] != "light":
         st.session_state["theme_mode"] = "light"
         st.rerun()
-    # -------------------------------------
 
     st.sidebar.markdown("---")
+
     date_fin = cfg["end_date"] or datetime.date.today()
     st.sidebar.markdown(_h(f"""
     <div class="sb-label">Marché actif</div>
