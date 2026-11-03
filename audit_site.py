@@ -223,9 +223,9 @@ TR = {
         "chart.unavailable_series": "VaR / returns series unavailable for this model.",
         # Headers
         "header.validation.kicker": "Model validation",
-        "header.comparative.title": "Comparative audit",
+        "header.comparative.title": "Comparative Audit",
         "header.comparative.subtitle": "Simultaneous backtest of several VaR / ES models on the same instrument.",
-        "header.unitaire.title": "Unit audit",
+        "header.unitaire.title": "Unit Audit",
         "header.unitaire.subtitle": "Detailed backtest of a model: exceptions, statistical tests, Basel zone.",
         "header.config.kicker": "Settings",
         "header.config.title": "Configuration",
@@ -1561,7 +1561,7 @@ def afficher_interface():
         st.session_state["theme_mode"] = "light"
         st.rerun()
 
-    is_en = st.sidebar.toggle("English",
+    is_en = st.sidebar.toggle("English Version",
                               value=(st.session_state.get("lang") == "en"))
     if is_en and st.session_state.get("lang") != "en":
         st.session_state["lang"] = "en"
