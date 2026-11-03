@@ -12,32 +12,387 @@ from streamlit.web import cli as stcli
 
 from main import CONFIG, run_backtest, stock_getter
 
-STANDARD_MODELS = {
-    "historical": "Historique (HS)",
-    "garch_t": "GARCH-t",
-    "gjr_skewt": "GJR-GARCH (Skew-t)",
+# ---------------------------------------------------------------------------
+# Internationalisation (FR / EN)
+# ---------------------------------------------------------------------------
+
+STANDARD_MODEL_CODES = ("historical", "garch_t", "gjr_skewt")
+
+TR = {
+    "fr": {
+        # Models
+        "model.historical": "Historique (HS)",
+        "model.historical.desc": "Quantiles empiriques",
+        "model.garch_t": "GARCH-t",
+        "model.garch_t.desc": "Volatilité conditionnelle · Student-t",
+        "model.gjr_skewt": "GJR-GARCH (Skew-t)",
+        "model.gjr_skewt.desc": "Volatilité asymétrique · Skew-t",
+        # Metrics
+        "metric.basel_zone_actu": "Zone de Bâle (actuelle)",
+        "metric.exceptions": "Exceptions VaR",
+        "metric.exc_rate": "Taux d'exceptions (%)",
+        "metric.obs_tested": "Observations testées",
+        "metric.kupiec_pval": "Kupiec POF · p-value",
+        "metric.christof_cc_pval": "Christoffersen CC · p-value",
+        "metric.dq_pval": "Dynamic Quantile · p-value",
+        "metric.christof_ind_pval": "Christoffersen IND · p-value",
+        "metric.es_mf_pval": "ES McNeil-Frey · p-value",
+        "metric.acerbi_z1_stat": "Acerbi-Szekely Z1 · statistique",
+        "metric.acerbi_z1_pval": "Acerbi-Szekely Z1 · p-value",
+        "metric.tail_resid_mean": "Moyenne des résidus de queue",
+        "metric.conv_warnings": "Alertes de convergence",
+        "metric.exc_2008_crisis": "Exceptions · crise 2008",
+        # Status
+        "status.pos": "Valide",
+        "status.neg": "Erreur",
+        "status.warn": "Attention",
+        "status.info": "Info",
+        # Charts
+        "chart.returns": "Rendements",
+        "chart.var": "VaR {conf}",
+        "chart.es": "ES (FRTB)",
+        "chart.exceptions": "Exceptions",
+        "chart.var_model": "VaR {conf} · {name}",
+        "chart.unavailable_series": "Séries VaR / rendements indisponibles pour ce modèle.",
+        # Headers
+        "header.validation.kicker": "Validation de modèles",
+        "header.comparative.title": "Audit comparatif",
+        "header.comparative.subtitle": "Backtest simultané de plusieurs modèles de VaR / ES sur un même instrument.",
+        "header.unitaire.title": "Audit unitaire",
+        "header.unitaire.subtitle": "Backtest détaillé d'un modèle : exceptions, tests statistiques, zone de Bâle.",
+        "header.config.kicker": "Paramétrage",
+        "header.config.title": "Configuration",
+        "header.config.subtitle": "Instrument, période d'analyse et paramètres de backtest.",
+        # Sections
+        "sec.reference_models": "Modèles de référence",
+        "sec.reference_models.desc": "Méthodologies à comparer",
+        "sec.custom_models": "Modèles custom",
+        "sec.custom_models.desc": "Séries de risque externes",
+        "sec.execution": "Exécution",
+        "sec.results": "Résultats",
+        "sec.synthesis": "Synthèse",
+        "sec.synthesis.desc": "Meilleur modèle par critère d'audit",
+        "sec.compared_var": "VaR comparées",
+        "sec.compared_var.desc": "Seuils VaR {conf} superposés aux rendements",
+        "sec.metrics_breakdown": "Décomposition des métriques",
+        "sec.metrics_breakdown.desc": "Toutes les statistiques du backtest",
+        "sec.model_selection": "Sélection du modèle",
+        "sec.analysis_period": "Période d'analyse",
+        "sec.instrument": "Instrument",
+        "sec.backtest_params": "Paramètres de backtest",
+        "sec.backtest_params.desc": "Lecture seule · définis dans main.CONFIG",
+        # UI
+        "ui.include_in_audit": "Inclure dans l'audit",
+        "ui.run_comparative": "Lancer l'audit comparatif",
+        "ui.run_unit": "Lancer l'audit unitaire",
+        "ui.select_model": "Sélectionnez le modèle :",
+        "ui.metric": "Métrique",
+        "ui.code": "Code",
+        "ui.parameter": "Paramètre",
+        "ui.value": "Valeur",
+        "ui.best_model": "Meilleur modèle",
+        "ui.criterion": "Critère",
+        "ui.test": "Test",
+        "ui.indicator": "Indicateur",
+        "ui.import_model": "Importer un modèle externe",
+        "ui.model_name": "Nom du modèle",
+        "ui.model_name.ph": "ex. RiskMetrics_2026",
+        "ui.var_series": "A · Série VaR",
+        "ui.es_series": "B · Série Expected Shortfall",
+        "ui.vol_series": "C · Série de volatilité",
+        "ui.upload_caption": "Formats acceptés : CSV, XLSX, Parquet · index = dates, première colonne = valeurs.",
+        "ui.save_model": "Enregistrer le modèle",
+        "ui.saved_models.select": "Modèles enregistrés · sélection pour l'audit",
+        "ui.saved_models": "Modèles enregistrés",
+        "ui.external_model_desc": "Modèle externe · VaR / ES / Vol",
+        "ui.remove": "Retirer",
+        "ui.start_date": "Date de début (AAAA-MM-JJ)",
+        "ui.end_date": "Date de fin (AAAA-MM-JJ, ou None)",
+        "ui.ticker": "Ticker (Yahoo Finance)",
+        "ui.colors_caption": "Vert : H₀ non rejetée (p > 5 %) · Rouge : H₀ rejetée (p ≤ 5 %).",
+        "ui.valid_period": "Période valide.",
+        # Ribbon
+        "ribbon.instrument": "Instrument",
+        "ribbon.period": "Période",
+        "ribbon.window": "Fenêtre",
+        "ribbon.refit": "Refit",
+        "ribbon.alpha_var": "α VaR",
+        "ribbon.alpha_es": "α ES",
+        "ribbon.days": "j",
+        # KPI
+        "kpi.basel": "Zone de Bâle",
+        "kpi.basel.sub": "Feu réglementaire actuel",
+        "kpi.var_exc": "Exceptions VaR",
+        "kpi.exc_rate": "Taux d'exceptions",
+        "kpi.kupiec": "Kupiec POF · p-value",
+        "kpi.h0_not_rejected": "H₀ non rejetée",
+        "kpi.h0_rejected": "H₀ rejetée",
+        "kpi.target": "cible ≈ {n}",
+        "kpi.varcaption": "Backtest VaR {conf} & Expected Shortfall",
+        # Synthesis
+        "synth.var_accuracy": "Précision de la VaR",
+        "synth.exc_indep": "Indépendance des exceptions",
+        "synth.dynamic_quality": "Qualité dynamique",
+        "synth.exc_calibration": "Calibration du taux d'exceptions",
+        "synth.deviation_target": "Écart à la cible",
+        "synth.obs_target": "{n} obs. · cible ≈ {t}",
+        "synth.unavailable": "Synthèse automatique indisponible pour cette sélection.",
+        # Sidebar
+        "sb.tagline": "Validation des modèles<br>de VaR et d'Expected Shortfall",
+        "sb.navigation": "Navigation",
+        "sb.menu.comparative": "Audit Comparatif",
+        "sb.menu.unitaire": "Audit Unitaire",
+        "sb.menu.config": "Config",
+        "sb.dark": "Thème sombre",
+        "sb.active_market": "Marché actif",
+        "sb.footer": ("Données : Yahoo Finance<br>"
+                      "VaR : Kupiec · Christoffersen · DQ<br>"
+                      "ES : McNeil-Frey · Acerbi-Szekely<br>"
+                      "Cadre : Bâle / FRTB"),
+        # Zones
+        "zone.VERTE": "VERTE",
+        "zone.JAUNE": "JAUNE",
+        "zone.ROUGE": "ROUGE",
+        # Errors / progress
+        "err.select_one_model": "Veuillez sélectionner au moins un modèle à auditer.",
+        "err.ticker_required": "Veuillez saisir un ticker.",
+        "err.ticker_not_found": "Ticker introuvable : « {symbol} ». Le ticker précédent est conservé.",
+        "ok.ticker_valid": "Ticker valide : {symbol}",
+        "err.date_format": "Format invalide, utilisez AAAA-MM-JJ. Les dates précédentes sont conservées.",
+        "err.date_order": "La date de fin doit être postérieure à la date de début. Les dates précédentes sont conservées.",
+        "err.period_too_short": "Période trop courte : ~{n} jours de bourse pour une fenêtre de {w}. Les dates précédentes sont conservées.",
+        "err.download_failed": "Téléchargement des données impossible : {e}",
+        "err.period_too_short_obs": "Période trop courte : {n} observations pour une fenêtre de {w} (minimum {m}).",
+        "progress.computing": "Calcul du modèle « {name} » en cours",
+        "progress.done": "Modèle « {name} » terminé",
+        # Upload
+        "upload.empty": "{kind} : fichier vide.",
+        "upload.bad_format": "{kind} : format non reconnu (une seule colonne attendue).",
+        "upload.dup_dates": "{kind} : dates dupliquées dans l'index.",
+        "upload.all_nan": "{kind} : série entièrement NaN.",
+        "upload.non_finite": "{kind} : contient des valeurs non finies.",
+        # Custom
+        "custom.name_required": "Veuillez saisir un nom de modèle.",
+        "custom.name_exists": "Un modèle portant ce nom existe déjà.",
+        "custom.all_required": "Veuillez importer les trois séries requises.",
+        "custom.saved": "Modèle « {name} » enregistré.",
+        "custom.var_kind": "VaR",
+        "custom.es_kind": "ES",
+        "custom.vol_kind": "Volatilité",
+        # Config params
+        "cfg.window_size": "Fenêtre d'estimation (jours)",
+        "cfg.refit_freq": "Fréquence de réestimation (jours)",
+        "cfg.alpha_var": "Niveau α VaR",
+        "cfg.alpha_es": "Niveau α ES",
+        "cfg.lags_dq": "Retards du test DQ",
+    },
+    "en": {
+        # Models
+        "model.historical": "Historical (HS)",
+        "model.historical.desc": "Empirical quantiles",
+        "model.garch_t": "GARCH-t",
+        "model.garch_t.desc": "Conditional volatility · Student-t",
+        "model.gjr_skewt": "GJR-GARCH (Skew-t)",
+        "model.gjr_skewt.desc": "Asymmetric volatility · Skew-t",
+        # Metrics
+        "metric.basel_zone_actu": "Basel zone (current)",
+        "metric.exceptions": "VaR exceptions",
+        "metric.exc_rate": "Exception rate (%)",
+        "metric.obs_tested": "Observations tested",
+        "metric.kupiec_pval": "Kupiec POF · p-value",
+        "metric.christof_cc_pval": "Christoffersen CC · p-value",
+        "metric.dq_pval": "Dynamic Quantile · p-value",
+        "metric.christof_ind_pval": "Christoffersen IND · p-value",
+        "metric.es_mf_pval": "ES McNeil-Frey · p-value",
+        "metric.acerbi_z1_stat": "Acerbi-Szekely Z1 · statistic",
+        "metric.acerbi_z1_pval": "Acerbi-Szekely Z1 · p-value",
+        "metric.tail_resid_mean": "Mean tail residuals",
+        "metric.conv_warnings": "Convergence warnings",
+        "metric.exc_2008_crisis": "Exceptions · 2008 crisis",
+        # Status
+        "status.pos": "Valid",
+        "status.neg": "Error",
+        "status.warn": "Warning",
+        "status.info": "Info",
+        # Charts
+        "chart.returns": "Returns",
+        "chart.var": "VaR {conf}",
+        "chart.es": "ES (FRTB)",
+        "chart.exceptions": "Exceptions",
+        "chart.var_model": "VaR {conf} · {name}",
+        "chart.unavailable_series": "VaR / returns series unavailable for this model.",
+        # Headers
+        "header.validation.kicker": "Model validation",
+        "header.comparative.title": "Comparative audit",
+        "header.comparative.subtitle": "Simultaneous backtest of several VaR / ES models on the same instrument.",
+        "header.unitaire.title": "Unit audit",
+        "header.unitaire.subtitle": "Detailed backtest of a model: exceptions, statistical tests, Basel zone.",
+        "header.config.kicker": "Settings",
+        "header.config.title": "Configuration",
+        "header.config.subtitle": "Instrument, analysis period and backtest parameters.",
+        # Sections
+        "sec.reference_models": "Reference models",
+        "sec.reference_models.desc": "Methodologies to compare",
+        "sec.custom_models": "Custom models",
+        "sec.custom_models.desc": "External risk series",
+        "sec.execution": "Run",
+        "sec.results": "Results",
+        "sec.synthesis": "Summary",
+        "sec.synthesis.desc": "Best model per audit criterion",
+        "sec.compared_var": "Compared VaR",
+        "sec.compared_var.desc": "VaR {conf} thresholds overlaid on returns",
+        "sec.metrics_breakdown": "Metric breakdown",
+        "sec.metrics_breakdown.desc": "All backtest statistics",
+        "sec.model_selection": "Model selection",
+        "sec.analysis_period": "Analysis period",
+        "sec.instrument": "Instrument",
+        "sec.backtest_params": "Backtest parameters",
+        "sec.backtest_params.desc": "Read-only · defined in main.CONFIG",
+        # UI
+        "ui.include_in_audit": "Include in audit",
+        "ui.run_comparative": "Run comparative audit",
+        "ui.run_unit": "Run unit audit",
+        "ui.select_model": "Select model:",
+        "ui.metric": "Metric",
+        "ui.code": "Code",
+        "ui.parameter": "Parameter",
+        "ui.value": "Value",
+        "ui.best_model": "Best model",
+        "ui.criterion": "Criterion",
+        "ui.test": "Test",
+        "ui.indicator": "Indicator",
+        "ui.import_model": "Import external model",
+        "ui.model_name": "Model name",
+        "ui.model_name.ph": "e.g. RiskMetrics_2026",
+        "ui.var_series": "A · VaR series",
+        "ui.es_series": "B · Expected Shortfall series",
+        "ui.vol_series": "C · Volatility series",
+        "ui.upload_caption": "Accepted formats: CSV, XLSX, Parquet · index = dates, first column = values.",
+        "ui.save_model": "Save model",
+        "ui.saved_models.select": "Saved models · select for audit",
+        "ui.saved_models": "Saved models",
+        "ui.external_model_desc": "External model · VaR / ES / Vol",
+        "ui.remove": "Remove",
+        "ui.start_date": "Start date (YYYY-MM-DD)",
+        "ui.end_date": "End date (YYYY-MM-DD, or None)",
+        "ui.ticker": "Ticker (Yahoo Finance)",
+        "ui.colors_caption": "Green: H₀ not rejected (p > 5%) · Red: H₀ rejected (p ≤ 5%).",
+        "ui.valid_period": "Valid period.",
+        # Ribbon
+        "ribbon.instrument": "Instrument",
+        "ribbon.period": "Period",
+        "ribbon.window": "Window",
+        "ribbon.refit": "Refit",
+        "ribbon.alpha_var": "α VaR",
+        "ribbon.alpha_es": "α ES",
+        "ribbon.days": "d",
+        # KPI
+        "kpi.basel": "Basel zone",
+        "kpi.basel.sub": "Current regulatory traffic light",
+        "kpi.var_exc": "VaR exceptions",
+        "kpi.exc_rate": "Exception rate",
+        "kpi.kupiec": "Kupiec POF · p-value",
+        "kpi.h0_not_rejected": "H₀ not rejected",
+        "kpi.h0_rejected": "H₀ rejected",
+        "kpi.target": "target ≈ {n}",
+        "kpi.varcaption": "Backtest VaR {conf} & Expected Shortfall",
+        # Synthesis
+        "synth.var_accuracy": "VaR accuracy",
+        "synth.exc_indep": "Exception independence",
+        "synth.dynamic_quality": "Dynamic quality",
+        "synth.exc_calibration": "Exception rate calibration",
+        "synth.deviation_target": "Deviation from target",
+        "synth.obs_target": "{n} obs. · target ≈ {t}",
+        "synth.unavailable": "Automatic summary unavailable for this selection.",
+        # Sidebar
+        "sb.tagline": "Model validation<br>of VaR and Expected Shortfall",
+        "sb.navigation": "Navigation",
+        "sb.menu.comparative": "Comparative Audit",
+        "sb.menu.unitaire": "Unit Audit",
+        "sb.menu.config": "Config",
+        "sb.dark": "Dark theme",
+        "sb.active_market": "Active market",
+        "sb.footer": ("Data: Yahoo Finance<br>"
+                      "VaR: Kupiec · Christoffersen · DQ<br>"
+                      "ES: McNeil-Frey · Acerbi-Szekely<br>"
+                      "Framework: Basel / FRTB"),
+        # Zones
+        "zone.VERTE": "GREEN",
+        "zone.JAUNE": "YELLOW",
+        "zone.ROUGE": "RED",
+        # Errors / progress
+        "err.select_one_model": "Please select at least one model to audit.",
+        "err.ticker_required": "Please enter a ticker.",
+        "err.ticker_not_found": "Ticker not found: \"{symbol}\". Previous ticker kept.",
+        "ok.ticker_valid": "Valid ticker: {symbol}",
+        "err.date_format": "Invalid format, use YYYY-MM-DD. Previous dates kept.",
+        "err.date_order": "End date must be after start date. Previous dates kept.",
+        "err.period_too_short": "Period too short: ~{n} trading days for a {w}-day window. Previous dates kept.",
+        "err.download_failed": "Data download failed: {e}",
+        "err.period_too_short_obs": "Period too short: {n} observations for a {w}-day window (minimum {m}).",
+        "progress.computing": "Computing model \"{name}\"",
+        "progress.done": "Model \"{name}\" done",
+        # Upload
+        "upload.empty": "{kind}: empty file.",
+        "upload.bad_format": "{kind}: unrecognized format (single column expected).",
+        "upload.dup_dates": "{kind}: duplicate dates in index.",
+        "upload.all_nan": "{kind}: series is entirely NaN.",
+        "upload.non_finite": "{kind}: contains non-finite values.",
+        # Custom
+        "custom.name_required": "Please enter a model name.",
+        "custom.name_exists": "A model with this name already exists.",
+        "custom.all_required": "Please upload all three required series.",
+        "custom.saved": "Model \"{name}\" saved.",
+        "custom.var_kind": "VaR",
+        "custom.es_kind": "ES",
+        "custom.vol_kind": "Volatility",
+        # Config params
+        "cfg.window_size": "Estimation window (days)",
+        "cfg.refit_freq": "Refit frequency (days)",
+        "cfg.alpha_var": "α VaR level",
+        "cfg.alpha_es": "α ES level",
+        "cfg.lags_dq": "DQ test lags",
+    },
 }
 
-METRIC_LABELS = {
-    "basel_zone_actu": "Zone de Bâle (actuelle)",
-    "exceptions": "Exceptions VaR",
-    "exc_rate": "Taux d'exceptions (%)",
-    "obs_tested": "Observations testées",
-    "kupiec_pval": "Kupiec POF · p-value",
-    "christof_cc_pval": "Christoffersen CC · p-value",
-    "dq_pval": "Dynamic Quantile · p-value",
-    "christof_ind_pval": "Christoffersen IND · p-value",
-    "es_mf_pval": "ES McNeil-Frey · p-value",
-    "acerbi_z1_stat": "Acerbi-Szekely Z1 · statistique",
-    "acerbi_z1_pval": "Acerbi-Szekely Z1 · p-value",
-    "tail_resid_mean": "Moyenne des résidus de queue",
-    "conv_warnings": "Alertes de convergence",
-    "exc_2008_crisis": "Exceptions · crise 2008",
-}
+
+def t(key, **kw):
+    """Translate a key using the current language. Falls back to FR, then to the key."""
+    lang = st.session_state.get("lang", "fr")
+    d = TR.get(lang) or TR["fr"]
+    entry = d.get(key)
+    if entry is None:
+        entry = TR["fr"].get(key, key)
+    if kw:
+        try:
+            return entry.format(**kw)
+        except (KeyError, IndexError, ValueError):
+            return entry
+    return entry
+
+
+def _metric_label(key):
+    lang = st.session_state.get("lang", "fr")
+    label = TR[lang].get(f"metric.{key}") or TR["fr"].get(f"metric.{key}")
+    if label is None:
+        return str(key).replace("_", " ").capitalize()
+    return label
+
+
+def _display_label(key):
+    """Map an internal model identifier to its localized display label."""
+    if key in STANDARD_MODEL_CODES:
+        return t(f"model.{key}")
+    return str(key)
+
 
 MODEL_COLORS = []
 C = {}
 
+
+# ---------------------------------------------------------------------------
+# Theme utilities (unchanged)
+# ---------------------------------------------------------------------------
 
 def _norm_hex(h, default):
     try:
@@ -195,6 +550,10 @@ def _cfg():
     return st.session_state["cfg"]
 
 
+# ---------------------------------------------------------------------------
+# Data / backtest helpers
+# ---------------------------------------------------------------------------
+
 @st.cache_data(ttl=3600, show_spinner=False)
 def _get_returns_cached(ticker, start, end):
     return stock_getter(ticker, start=start, end=end)
@@ -215,17 +574,17 @@ def _run_standard_model_cached(ticker, start, end, model_type, window_size, refi
 
 def _validate_uploaded_series(series, kind):
     if series is None:
-        raise ValueError(f"{kind} : fichier vide.")
+        raise ValueError(t("upload.empty", kind=kind))
     if not isinstance(series, pd.Series):
-        raise ValueError(f"{kind} : format non reconnu (une seule colonne attendue).")
+        raise ValueError(t("upload.bad_format", kind=kind))
     if not series.index.is_monotonic_increasing:
         series = series.sort_index()
     if series.index.has_duplicates:
-        raise ValueError(f"{kind} : dates dupliquées dans l'index.")
+        raise ValueError(t("upload.dup_dates", kind=kind))
     if series.isna().all():
-        raise ValueError(f"{kind} : série entièrement NaN.")
+        raise ValueError(t("upload.all_nan", kind=kind))
     if not np.isfinite(series.dropna().values).all():
-        raise ValueError(f"{kind} : contient des valeurs non finies.")
+        raise ValueError(t("upload.non_finite", kind=kind))
     return series
 
 
@@ -250,22 +609,20 @@ def _check_period(cfg):
     try:
         n = len(_get_returns_cached(cfg["ticker"], cfg["start_date"], cfg["end_date"]))
     except Exception as e:
-        return False, f"Téléchargement des données impossible : {e}"
+        return False, t("err.download_failed", e=e)
     min_obs = cfg["window_size"] + CONFIG["lags_dq"] + 20
     if n <= min_obs:
-        return False, (
-            f"Période trop courte : {n} observations "
-            f"pour une fenêtre de {cfg['window_size']} (minimum {min_obs})."
-        )
+        return False, t("err.period_too_short_obs",
+                        n=n, w=cfg["window_size"], m=min_obs)
     return True, None
 
 
 def backtester(selected_standards, selected_customs_dict, progress_callback=None):
     cfg = _cfg()
     tasks = []
-    for code, label in STANDARD_MODELS.items():
+    for code in STANDARD_MODEL_CODES:
         if code in selected_standards:
-            tasks.append((code, label, None))
+            tasks.append((code, code, None))
     for c_name, c_data in selected_customs_dict.items():
         tasks.append(("custom", c_name, c_data))
 
@@ -273,10 +630,11 @@ def backtester(selected_standards, selected_customs_dict, progress_callback=None
     results = []
     dict_outputs = {}
 
-    for i, (m_type, display_name, c_data) in enumerate(tasks):
+    for i, (m_type, key, c_data) in enumerate(tasks):
         pct_depart = int((i / total) * 100)
         if progress_callback:
-            progress_callback(pct_depart, f"Calcul du modèle « {display_name} » en cours")
+            progress_callback(pct_depart,
+                              t("progress.computing", name=_display_label(key)))
 
         if m_type == "custom":
             returns = _get_returns_cached(cfg["ticker"], cfg["start_date"], cfg["end_date"])
@@ -297,18 +655,19 @@ def backtester(selected_standards, selected_customs_dict, progress_callback=None
                 cfg["alpha_var"], cfg["alpha_es"],
             )
 
-        dict_outputs[display_name] = res
+        dict_outputs[key] = res
         clean_res = {
             k: v for k, v in res.items()
-            if k not in ["var_series", "es_frtb_series", "test_returns", "rolling_250", "eta_hist", "lambda_hist",
-                         "refit_dates"]
+            if k not in ["var_series", "es_frtb_series", "test_returns", "rolling_250",
+                         "eta_hist", "lambda_hist", "refit_dates"]
         }
-        clean_res["model"] = display_name
+        clean_res["model"] = key
         results.append(clean_res)
 
         pct_fin = int(((i + 1) / total) * 100)
         if progress_callback:
-            progress_callback(pct_fin, f"Modèle « {display_name} » terminé")
+            progress_callback(pct_fin,
+                              t("progress.done", name=_display_label(key)))
 
     df_summary = pd.DataFrame(results).set_index("model").T
     return df_summary, dict_outputs
@@ -324,6 +683,10 @@ def is_valid_ticker(symbol: str) -> bool:
     except Exception:
         return False
 
+
+# ---------------------------------------------------------------------------
+# Rendering helpers
+# ---------------------------------------------------------------------------
 
 def _h(markup: str) -> str:
     return "".join(line.strip() for line in markup.splitlines())
@@ -364,7 +727,11 @@ def panel_label(text):
 
 
 def status_line(kind, text):
-    tag = {"pos": "Valide", "neg": "Erreur", "warn": "Attention"}.get(kind, "Info")
+    tag = {
+        "pos": t("status.pos"),
+        "neg": t("status.neg"),
+        "warn": t("status.warn"),
+    }.get(kind, t("status.info"))
     _render(
         f'<div class="stat {kind}"><span class="stat-tag">{tag}</span>'
         f'<span class="stat-txt">{_esc(text)}</span></div>'
@@ -375,12 +742,12 @@ def context_ribbon():
     cfg = _cfg()
     fin = cfg["end_date"] or datetime.date.today()
     cells = [
-        ("Instrument", cfg["ticker"]),
-        ("Période", f"{cfg['start_date']} → {fin}"),
-        ("Fenêtre", f"{cfg['window_size']} j"),
-        ("Refit", f"{cfg['refit_freq']} j"),
-        ("α VaR", f"{float(cfg['alpha_var']) * 100:.2f}%"),
-        ("α ES", f"{float(cfg['alpha_es']) * 100:.2f}%"),
+        (t("ribbon.instrument"), cfg["ticker"]),
+        (t("ribbon.period"), f"{cfg['start_date']} → {fin}"),
+        (t("ribbon.window"), f"{cfg['window_size']} {t('ribbon.days')}"),
+        (t("ribbon.refit"), f"{cfg['refit_freq']} {t('ribbon.days')}"),
+        (t("ribbon.alpha_var"), f"{float(cfg['alpha_var']) * 100:.2f}%"),
+        (t("ribbon.alpha_es"), f"{float(cfg['alpha_es']) * 100:.2f}%"),
     ]
     inner = "".join(
         f'<div class="rb-cell"><div class="rb-k">{_esc(k)}</div>'
@@ -414,6 +781,11 @@ def _fmt_scalar(f, key=""):
 
 
 def _fmt(key, v):
+    if key == "basel_zone_actu":
+        s = str(v)
+        if s.lower() in ("nan", "none"):
+            return "—"
+        return t(f"zone.{s.upper()}")
     if isinstance(v, (tuple, list, np.ndarray)):
         try:
             vals = [float(x) for x in v]
@@ -445,11 +817,11 @@ def _cell_tone(key, v):
 
 def render_metrics_table(df_summary, compact=False):
     models = list(df_summary.columns)
-    head = "".join(f'<th class="num">{_esc(m)}</th>' for m in models)
-    code_th = "" if compact else "<th>Code</th>"
+    head = "".join(f'<th class="num">{_esc(_display_label(m))}</th>' for m in models)
+    code_th = "" if compact else f"<th>{_esc(t('ui.code'))}</th>"
     rows = ""
     for key in df_summary.index:
-        label = METRIC_LABELS.get(key, str(key).replace("_", " ").capitalize())
+        label = _metric_label(key)
         code_td = "" if compact else f'<td class="code">{_esc(key)}</td>'
         cells = ""
         for m in models:
@@ -457,7 +829,8 @@ def render_metrics_table(df_summary, compact=False):
             cells += f'<td class="num {_cell_tone(key, raw)}">{_esc(_fmt(key, raw))}</td>'
         rows += f'<tr><td class="lbl">{_esc(label)}</td>{code_td}{cells}</tr>'
     _render(
-        f'<div class="tbl-wrap"><table class="fin"><thead><tr><th>Métrique</th>'
+        f'<div class="tbl-wrap"><table class="fin"><thead><tr>'
+        f'<th>{_esc(t("ui.metric"))}</th>'
         f'{code_th}{head}</tr></thead><tbody>{rows}</tbody></table></div>'
     )
 
@@ -468,8 +841,9 @@ def render_kv_table(rows):
         for k, v in rows
     )
     _render(
-        f'<div class="tbl-wrap"><table class="fin"><thead><tr><th>Paramètre</th>'
-        f'<th class="num">Valeur</th></tr></thead><tbody>{body}</tbody></table></div>'
+        f'<div class="tbl-wrap"><table class="fin"><thead><tr>'
+        f'<th>{_esc(t("ui.parameter"))}</th>'
+        f'<th class="num">{_esc(t("ui.value"))}</th></tr></thead><tbody>{body}</tbody></table></div>'
     )
 
 
@@ -506,23 +880,26 @@ def build_backtest_chart(raw_res, conf_label, height=470):
     fig = go.Figure()
     fig.add_hline(y=0, line_color=C["line"], line_width=1)
     fig.add_trace(go.Scatter(
-        x=returns_s.index, y=returns_s.values, mode="lines", name="Rendements",
+        x=returns_s.index, y=returns_s.values, mode="lines",
+        name=t("chart.returns"),
         line=dict(color=C["ret"], width=0.9),
     ))
     fig.add_trace(go.Scatter(
-        x=var_plot.index, y=var_plot.values, mode="lines", name=f"VaR {conf_label}",
+        x=var_plot.index, y=var_plot.values, mode="lines",
+        name=t("chart.var", conf=conf_label),
         line=dict(color=C["navy"], width=1.6, shape="hv"),
     ))
     if "es_frtb_series" in raw_res:
         es_plot = _neg(raw_res["es_frtb_series"])
         fig.add_trace(go.Scatter(
-            x=es_plot.index, y=es_plot.values, mode="lines", name="ES (FRTB)",
+            x=es_plot.index, y=es_plot.values, mode="lines",
+            name=t("chart.es"),
             line=dict(color=C["warn"], width=1.2, dash="dot", shape="hv"),
         ))
     exc_mask = returns_s < var_plot
     fig.add_trace(go.Scatter(
         x=returns_s[exc_mask].index, y=returns_s[exc_mask].values,
-        mode="markers", name="Exceptions",
+        mode="markers", name=t("chart.exceptions"),
         marker=dict(color=C["neg"], size=7, symbol="x-thin",
                     line=dict(color=C["neg"], width=1.6)),
     ))
@@ -537,15 +914,17 @@ def build_overlay_chart(dict_outputs, conf_label, height=420):
     fig.add_hline(y=0, line_color=C["line"], line_width=1)
     r = first["test_returns"]
     fig.add_trace(go.Scatter(
-        x=r.index, y=r.values, mode="lines", name="Rendements",
+        x=r.index, y=r.values, mode="lines",
+        name=t("chart.returns"),
         line=dict(color=C["ret_soft"], width=0.8),
     ))
-    for i, (name, res) in enumerate(dict_outputs.items()):
+    for i, (key, res) in enumerate(dict_outputs.items()):
         if "var_series" not in res:
             continue
         v = _neg(res["var_series"])
         fig.add_trace(go.Scatter(
-            x=v.index, y=v.values, mode="lines", name=f"VaR {conf_label} · {name}",
+            x=v.index, y=v.values, mode="lines",
+            name=t("chart.var_model", conf=conf_label, name=_display_label(key)),
             line=dict(color=MODEL_COLORS[i % len(MODEL_COLORS)], width=1.5, shape="hv"),
         ))
     _plot_layout(fig, height)
@@ -575,32 +954,41 @@ def _make_progress():
     return cb, clear
 
 
+# ---------------------------------------------------------------------------
+# Composite sections
+# ---------------------------------------------------------------------------
+
 def afficher_synthese_comparative(df_summary):
-    section("05", "Synthèse", "Meilleur modèle par critère d'audit")
+    section("05", t("sec.synthesis"), t("sec.synthesis.desc"))
     try:
         cfg = _cfg()
-        modeles = df_summary.columns.tolist()
+        model_keys = df_summary.columns.tolist()
 
-        kupiec = {m: float(df_summary.loc["kupiec_pval", m]) for m in modeles}
+        kupiec = {m: float(df_summary.loc["kupiec_pval", m]) for m in model_keys}
         best_kupiec = max(kupiec, key=kupiec.get)
 
-        cc = {m: float(df_summary.loc["christof_cc_pval", m]) for m in modeles}
+        cc = {m: float(df_summary.loc["christof_cc_pval", m]) for m in model_keys}
         best_cc = max(cc, key=cc.get)
 
-        dq = {m: float(df_summary.loc["dq_pval", m]) for m in modeles}
+        dq = {m: float(df_summary.loc["dq_pval", m]) for m in model_keys}
         best_dq = max(dq, key=dq.get)
 
-        exc = {m: float(df_summary.loc["exceptions", m]) for m in modeles}
-        n_obs = float(df_summary.loc["obs_tested", modeles[0]])
+        exc = {m: float(df_summary.loc["exceptions", m]) for m in model_keys}
+        n_obs = float(df_summary.loc["obs_tested", model_keys[0]])
         target = n_obs * cfg["alpha_var"]
         best_exc = min(exc, key=lambda m: abs(exc[m] - target))
 
         rows = [
-            ("Précision de la VaR", "Kupiec POF", best_kupiec, f"p = {kupiec[best_kupiec]:.4f}"),
-            ("Indépendance des exceptions", "Christoffersen CC", best_cc, f"p = {cc[best_cc]:.4f}"),
-            ("Qualité dynamique", "Dynamic Quantile", best_dq, f"p = {dq[best_dq]:.4f}"),
-            ("Calibration du taux d'exceptions", "Écart à la cible", best_exc,
-             f"{int(exc[best_exc])} obs. · cible ≈ {target:.0f}"),
+            (t("synth.var_accuracy"), "Kupiec POF",
+             _display_label(best_kupiec), f"p = {kupiec[best_kupiec]:.4f}"),
+            (t("synth.exc_indep"), "Christoffersen CC",
+             _display_label(best_cc), f"p = {cc[best_cc]:.4f}"),
+            (t("synth.dynamic_quality"), "Dynamic Quantile",
+             _display_label(best_dq), f"p = {dq[best_dq]:.4f}"),
+            (t("synth.exc_calibration"), t("synth.deviation_target"),
+             _display_label(best_exc),
+             t("synth.obs_target",
+               n=int(exc[best_exc]), t=f"{target:.0f}")),
         ]
         body = "".join(
             f'<tr><td class="lbl">{_esc(a)}</td><td class="code">{_esc(b)}</td>'
@@ -608,12 +996,15 @@ def afficher_synthese_comparative(df_summary):
             for a, b, c, d in rows
         )
         _render(
-            '<div class="tbl-wrap"><table class="fin"><thead><tr>'
-            '<th>Critère</th><th>Test</th><th>Meilleur modèle</th>'
-            f'<th class="num">Indicateur</th></tr></thead><tbody>{body}</tbody></table></div>'
+            f'<div class="tbl-wrap"><table class="fin"><thead><tr>'
+            f'<th>{_esc(t("ui.criterion"))}</th>'
+            f'<th>{_esc(t("ui.test"))}</th>'
+            f'<th>{_esc(t("ui.best_model"))}</th>'
+            f'<th class="num">{_esc(t("ui.indicator"))}</th>'
+            f'</tr></thead><tbody>{body}</tbody></table></div>'
         )
     except Exception:
-        status_line("", "Synthèse automatique indisponible pour cette sélection.")
+        status_line("", t("synth.unavailable"))
 
 
 def gestionnaire_modeles_custom(show_checkboxes=True):
@@ -621,38 +1012,39 @@ def gestionnaire_modeles_custom(show_checkboxes=True):
         st.session_state["custom_models"] = {}
 
     with st.container(border=True):
-        panel_label("Importer un modèle externe")
-        custom_name = st.text_input("Nom du modèle", placeholder="ex. RiskMetrics_2026", key="custom_model_name")
+        panel_label(t("ui.import_model"))
+        custom_name = st.text_input(t("ui.model_name"), placeholder=t("ui.model_name.ph"),
+                                    key="custom_model_name")
 
         c1, c2, c3 = st.columns(3, gap="small")
         with c1:
-            panel_label("A · Série VaR")
-            file_var = st.file_uploader("Série VaR", type=["csv", "xlsx", "parquet"], key="add_var",
+            panel_label(t("ui.var_series"))
+            file_var = st.file_uploader("VaR", type=["csv", "xlsx", "parquet"], key="add_var",
                                         label_visibility="collapsed")
         with c2:
-            panel_label("B · Série Expected Shortfall")
-            file_es = st.file_uploader("Série ES", type=["csv", "xlsx", "parquet"], key="add_es",
+            panel_label(t("ui.es_series"))
+            file_es = st.file_uploader("ES", type=["csv", "xlsx", "parquet"], key="add_es",
                                        label_visibility="collapsed")
         with c3:
-            panel_label("C · Série de volatilité")
-            file_vol = st.file_uploader("Série de volatilité", type=["csv", "xlsx", "parquet"], key="add_vol",
+            panel_label(t("ui.vol_series"))
+            file_vol = st.file_uploader("Vol", type=["csv", "xlsx", "parquet"], key="add_vol",
                                         label_visibility="collapsed")
 
-        st.caption("Formats acceptés : CSV, XLSX, Parquet · index = dates, première colonne = valeurs.")
+        st.caption(t("ui.upload_caption"))
 
-        if st.button("Enregistrer le modèle", type="primary"):
+        if st.button(t("ui.save_model"), type="primary"):
             clean_name = custom_name.strip()
             if not clean_name:
-                status_line("neg", "Veuillez saisir un nom de modèle.")
+                status_line("neg", t("custom.name_required"))
             elif clean_name in st.session_state["custom_models"]:
-                status_line("neg", "Un modèle portant ce nom existe déjà.")
+                status_line("neg", t("custom.name_exists"))
             elif not (file_var and file_es and file_vol):
-                status_line("neg", "Veuillez importer les trois séries requises.")
+                status_line("neg", t("custom.all_required"))
             else:
                 try:
-                    var_series = parse_uploaded_file(file_var, "VaR")
-                    es_series = parse_uploaded_file(file_es, "ES")
-                    vol_series = parse_uploaded_file(file_vol, "Volatilité")
+                    var_series = parse_uploaded_file(file_var, t("custom.var_kind"))
+                    es_series = parse_uploaded_file(file_es, t("custom.es_kind"))
+                    vol_series = parse_uploaded_file(file_vol, t("custom.vol_kind"))
                 except ValueError as e:
                     status_line("neg", str(e))
                 else:
@@ -661,11 +1053,11 @@ def gestionnaire_modeles_custom(show_checkboxes=True):
                         "es": es_series,
                         "vol": vol_series,
                     }
-                    st.toast(f"Modèle « {clean_name} » enregistré.")
+                    st.toast(t("custom.saved", name=clean_name))
                     st.rerun()
 
     if st.session_state["custom_models"]:
-        panel_label("Modèles enregistrés · sélection pour l'audit" if show_checkboxes else "Modèles enregistrés")
+        panel_label(t("ui.saved_models.select") if show_checkboxes else t("ui.saved_models"))
         cols_custom_select = {}
         for c_name in list(st.session_state["custom_models"].keys()):
             with st.container(border=True):
@@ -677,16 +1069,16 @@ def gestionnaire_modeles_custom(show_checkboxes=True):
                 with col_info:
                     _render(
                         f'<div class="card-title">{_esc(c_name)}</div>'
-                        '<div class="card-desc">Modèle externe · VaR / ES / Vol</div>'
+                        f'<div class="card-desc">{_esc(t("ui.external_model_desc"))}</div>'
                     )
 
                 if show_checkboxes:
                     with col_chk:
-                        cols_custom_select[c_name] = st.checkbox("Inclure dans l'audit", value=True,
-                                                                 key=f"chk_{c_name}")
+                        cols_custom_select[c_name] = st.checkbox(
+                            t("ui.include_in_audit"), value=True, key=f"chk_{c_name}")
 
                 with col_del:
-                    if st.button("Retirer", key=f"del_{c_name}", use_container_width=True):
+                    if st.button(t("ui.remove"), key=f"del_{c_name}", use_container_width=True):
                         del st.session_state["custom_models"][c_name]
                         st.rerun()
         return cols_custom_select
@@ -695,38 +1087,34 @@ def gestionnaire_modeles_custom(show_checkboxes=True):
 
 def page_audit_comparatif():
     cfg = _cfg()
-    page_header("Validation de modèles", "Audit comparatif",
-                "Backtest simultané de plusieurs modèles de VaR / ES sur un même instrument.")
+    page_header(t("header.validation.kicker"), t("header.comparative.title"),
+                t("header.comparative.subtitle"))
     context_ribbon()
 
-    section("01", "Modèles de référence", "Méthodologies à comparer")
-    defs = [
-        ("historical", "Simulation historique", "Quantiles empiriques"),
-        ("garch_t", "GARCH-t", "Volatilité conditionnelle · Student-t"),
-        ("gjr_skewt", "GJR-GARCH", "Volatilité asymétrique · Skew-t"),
-    ]
+    section("01", t("sec.reference_models"), t("sec.reference_models.desc"))
+    defs = [code for code in STANDARD_MODEL_CODES]
     selected_standards = []
-    for col, (code, title, desc) in zip(st.columns(3, gap="small"), defs):
+    for col, code in zip(st.columns(3, gap="small"), defs):
         with col:
             with st.container(border=True):
                 _render(
-                    f'<div class="card-title">{_esc(title)}</div>'
-                    f'<div class="card-desc">{_esc(desc)}</div>'
+                    f'<div class="card-title">{_esc(t(f"model.{code}"))}</div>'
+                    f'<div class="card-desc">{_esc(t(f"model.{code}.desc"))}</div>'
                 )
-                if st.checkbox("Inclure dans l'audit", value=True, key=f"model_{code}"):
+                if st.checkbox(t("ui.include_in_audit"), value=True, key=f"model_{code}"):
                     selected_standards.append(code)
 
-    section("02", "Modèles custom", "Séries de risque externes")
+    section("02", t("sec.custom_models"), t("sec.custom_models.desc"))
     custom_selections = gestionnaire_modeles_custom()
     selected_customs = {
         name: st.session_state["custom_models"][name]
         for name, is_sel in custom_selections.items() if is_sel
     }
 
-    section("03", "Exécution")
-    if st.button("Lancer l'audit comparatif", type="primary"):
+    section("03", t("sec.execution"))
+    if st.button(t("ui.run_comparative"), type="primary"):
         if not selected_standards and not selected_customs:
-            status_line("warn", "Veuillez sélectionner au moins un modèle à auditer.")
+            status_line("warn", t("err.select_one_model"))
         else:
             ok, msg = _check_period(cfg)
             if not ok:
@@ -734,7 +1122,8 @@ def page_audit_comparatif():
             else:
                 cb, clear = _make_progress()
                 try:
-                    df_summary, dict_outputs = backtester(selected_standards, selected_customs, progress_callback=cb)
+                    df_summary, dict_outputs = backtester(selected_standards, selected_customs,
+                                                         progress_callback=cb)
                 except ValueError as e:
                     clear()
                     status_line("neg", str(e))
@@ -749,41 +1138,42 @@ def page_audit_comparatif():
 
     res = st.session_state.get("last_comp")
     if res:
-        section("04", "Résultats", f"{res['ticker']} · tableau comparatif des métriques")
+        section("04", t("sec.results"), f"{res['ticker']} · {t('ui.metric')}")
         render_metrics_table(res["df"])
-        st.caption("Vert : H₀ non rejetée (p > 5 %) · Rouge : H₀ rejetée (p ≤ 5 %).")
+        st.caption(t("ui.colors_caption"))
         afficher_synthese_comparative(res["df"])
         fig = build_overlay_chart(res["out"], res["conf"])
         if fig is not None:
-            section("06", "VaR comparées", f"Seuils VaR {res['conf']} superposés aux rendements")
+            section("06", t("sec.compared_var"),
+                    t("sec.compared_var.desc", conf=res["conf"]))
             st.plotly_chart(fig, use_container_width=True, theme=None)
 
 
 def page_audit_unitaire():
     cfg = _cfg()
-    page_header("Validation de modèles", "Audit unitaire",
-                "Backtest détaillé d'un modèle : exceptions, tests statistiques, zone de Bâle.")
+    page_header(t("header.validation.kicker"), t("header.unitaire.title"),
+                t("header.unitaire.subtitle"))
     context_ribbon()
 
-    section("01", "Sélection du modèle")
-    options_map = {label: code for code, label in STANDARD_MODELS.items()}
+    section("01", t("sec.model_selection"))
+    options_map = {t(f"model.{code}"): code for code in STANDARD_MODEL_CODES}
     custom_models = st.session_state.get("custom_models", {})
     for c_name in custom_models.keys():
         options_map[c_name] = "custom"
 
     modele_choisi_label = st.radio(
-        "Sélectionnez le modèle :",
+        t("ui.select_model"),
         options=list(options_map.keys()),
         horizontal=True,
         label_visibility="collapsed",
     )
     modele_code = options_map[modele_choisi_label]
 
-    section("02", "Modèles custom", "Séries de risque externes")
+    section("02", t("sec.custom_models"), t("sec.custom_models.desc"))
     gestionnaire_modeles_custom(show_checkboxes=False)
 
-    section("03", "Exécution")
-    if st.button("Lancer l'audit unitaire", type="primary"):
+    section("03", t("sec.execution"))
+    if st.button(t("ui.run_unit"), type="primary"):
         ok, msg = _check_period(cfg)
         if not ok:
             status_line("neg", msg)
@@ -791,9 +1181,12 @@ def page_audit_unitaire():
             cb, clear = _make_progress()
             selected_stds = [modele_code] if modele_code != "custom" else []
             selected_cust = (
-                {modele_choisi_label: custom_models[modele_choisi_label]} if modele_code == "custom" else {})
+                {modele_choisi_label: custom_models[modele_choisi_label]}
+                if modele_code == "custom" else {}
+            )
             try:
-                df_summary, dict_outputs = backtester(selected_stds, selected_cust, progress_callback=cb)
+                df_summary, dict_outputs = backtester(selected_stds, selected_cust,
+                                                     progress_callback=cb)
             except ValueError as e:
                 clear()
                 status_line("neg", str(e))
@@ -802,7 +1195,7 @@ def page_audit_unitaire():
                 st.session_state["last_unit"] = {
                     "df": df_summary,
                     "out": dict_outputs,
-                    "label": modele_choisi_label,
+                    "code": modele_code if modele_code != "custom" else modele_choisi_label,
                     "conf": _conf_label(cfg),
                     "ticker": cfg["ticker"],
                 }
@@ -811,37 +1204,41 @@ def page_audit_unitaire():
     if not res:
         return
 
-    label = res["label"]
+    model_key = res["code"]
+    label = _display_label(model_key)
     df_summary = res["df"]
-    section("04", "Résultats", f"{label} · {res['ticker']}")
+    section("04", t("sec.results"), f"{label} · {res['ticker']}")
 
-    zone = str(df_summary.loc["basel_zone_actu", label])
-    n_exc = int(float(df_summary.loc["exceptions", label]))
-    rate = float(df_summary.loc["exc_rate", label])
-    kupiec_p = float(df_summary.loc["kupiec_pval", label])
+    zone = str(df_summary.loc["basel_zone_actu", model_key])
+    n_exc = int(float(df_summary.loc["exceptions", model_key]))
+    rate = float(df_summary.loc["exc_rate", model_key])
+    kupiec_p = float(df_summary.loc["kupiec_pval", model_key])
     try:
-        n_obs = float(df_summary.loc["obs_tested", label])
-        target_txt = f"cible ≈ {n_obs * cfg['alpha_var']:.0f}"
+        n_obs = float(df_summary.loc["obs_tested", model_key])
+        target_txt = t("kpi.target", n=f"{n_obs * cfg['alpha_var']:.0f}")
     except Exception:
         target_txt = "—"
 
+    zone_tone = {"VERTE": "pos", "JAUNE": "warn", "ROUGE": "neg"}.get(zone.upper(), "")
+    zone_display = t(f"zone.{zone.upper()}")
+
     kpi_strip([
-        ("Zone de Bâle", zone, "Feu réglementaire actuel",
-         {"VERTE": "pos", "JAUNE": "warn", "ROUGE": "neg"}.get(zone.upper(), "")),
-        ("Exceptions VaR", f"{n_exc}", target_txt, ""),
-        ("Taux d'exceptions", f"{rate:.2f}%", f"VaR {res['conf']}", ""),
-        ("Kupiec POF · p-value", f"{kupiec_p:.4f}", "H₀ non rejetée" if kupiec_p > 0.05 else "H₀ rejetée",
+        (t("kpi.basel"), zone_display, t("kpi.basel.sub"), zone_tone),
+        (t("kpi.var_exc"), f"{n_exc}", target_txt, ""),
+        (t("kpi.exc_rate"), f"{rate:.2f}%", f"VaR {res['conf']}", ""),
+        (t("kpi.kupiec"), f"{kupiec_p:.4f}",
+         t("kpi.h0_not_rejected") if kupiec_p > 0.05 else t("kpi.h0_rejected"),
          "pos" if kupiec_p > 0.05 else "neg"),
     ])
 
-    panel_label(f"Backtest VaR {res['conf']} & Expected Shortfall")
-    fig = build_backtest_chart(res["out"].get(label, {}), res["conf"], height=440)
+    panel_label(t("kpi.varcaption", conf=res["conf"]))
+    fig = build_backtest_chart(res["out"].get(model_key, {}), res["conf"], height=440)
     if fig is not None:
         st.plotly_chart(fig, use_container_width=True, theme=None)
     else:
-        status_line("", "Séries VaR / rendements indisponibles pour ce modèle.")
+        status_line("", t("chart.unavailable_series"))
 
-    section("05", "Décomposition des métriques", "Toutes les statistiques du backtest")
+    section("05", t("sec.metrics_breakdown"), t("sec.metrics_breakdown.desc"))
     half = (len(df_summary.index) + 1) // 2
     col_l, col_r = st.columns(2, gap="medium")
     with col_l:
@@ -851,56 +1248,61 @@ def page_audit_unitaire():
 
 
 def page_config():
-    page_header("Paramétrage", "Configuration", "Instrument, période d'analyse et paramètres de backtest.")
+    page_header(t("header.config.kicker"), t("header.config.title"),
+                t("header.config.subtitle"))
     cfg = _cfg()
 
     col_a, col_b = st.columns(2, gap="medium")
 
     with col_a:
-        section("01", "Période d'analyse")
-        raw_start = st.text_input("Date de début (AAAA-MM-JJ)", str(cfg["start_date"]))
-        raw_end = st.text_input("Date de fin (AAAA-MM-JJ, ou None)", str(cfg["end_date"]))
+        section("01", t("sec.analysis_period"))
+        raw_start = st.text_input(t("ui.start_date"), str(cfg["start_date"]))
+        raw_end = st.text_input(t("ui.end_date"), str(cfg["end_date"]))
 
         try:
             new_start = datetime.date.fromisoformat(raw_start.strip())
-            new_end = (None if raw_end.strip().lower() == "none" else datetime.date.fromisoformat(raw_end.strip()))
+            new_end = (None if raw_end.strip().lower() == "none"
+                       else datetime.date.fromisoformat(raw_end.strip()))
         except ValueError:
-            status_line("neg", "Format invalide, utilisez AAAA-MM-JJ. Les dates précédentes sont conservées.")
+            status_line("neg", t("err.date_format"))
         else:
             end_eff = new_end or datetime.date.today()
             jours_bourse = (end_eff - new_start).days * 252 / 365
             if end_eff <= new_start:
-                status_line("neg",
-                            "La date de fin doit être postérieure à la date de début. Les dates précédentes sont conservées.")
+                status_line("neg", t("err.date_order"))
             elif jours_bourse <= cfg["window_size"]:
-                status_line("neg",
-                            f"Période trop courte : ~{int(jours_bourse)} jours de bourse pour une fenêtre de {cfg['window_size']}. Les dates précédentes sont conservées.")
+                status_line("neg", t("err.period_too_short",
+                                     n=int(jours_bourse), w=cfg["window_size"]))
             else:
                 cfg["start_date"] = new_start
                 cfg["end_date"] = new_end
-                status_line("pos", "Période valide.")
+                status_line("pos", t("ui.valid_period"))
 
     with col_b:
-        section("02", "Instrument")
-        raw = st.text_input("Ticker (Yahoo Finance)", cfg["ticker"])
+        section("02", t("sec.instrument"))
+        raw = st.text_input(t("ui.ticker"), cfg["ticker"])
         symbol = raw.strip().upper()
         if not symbol:
-            status_line("warn", "Veuillez saisir un ticker.")
+            status_line("warn", t("err.ticker_required"))
         elif is_valid_ticker(symbol):
             cfg["ticker"] = symbol
-            status_line("pos", f"Ticker valide : {symbol}")
+            status_line("pos", t("ok.ticker_valid", symbol=symbol))
         else:
-            status_line("neg", f"Ticker introuvable : « {symbol} ». Le ticker précédent est conservé.")
+            status_line("neg", t("err.ticker_not_found", symbol=symbol))
 
-    section("03", "Paramètres de backtest", "Lecture seule · définis dans main.CONFIG")
+    section("03", t("sec.backtest_params"), t("sec.backtest_params.desc"))
     render_kv_table([
-        ("Fenêtre d'estimation (jours)", cfg["window_size"]),
-        ("Fréquence de réestimation (jours)", cfg["refit_freq"]),
-        ("Niveau α VaR", cfg["alpha_var"]),
-        ("Niveau α ES", cfg["alpha_es"]),
-        ("Retards du test DQ", CONFIG.get("lags_dq", "—")),
+        (t("cfg.window_size"), cfg["window_size"]),
+        (t("cfg.refit_freq"), cfg["refit_freq"]),
+        (t("cfg.alpha_var"), cfg["alpha_var"]),
+        (t("cfg.alpha_es"), cfg["alpha_es"]),
+        (t("cfg.lags_dq"), CONFIG.get("lags_dq", "—")),
     ])
 
+
+# ---------------------------------------------------------------------------
+# CSS
+# ---------------------------------------------------------------------------
 
 CSS = """
 <style>
@@ -1107,36 +1509,51 @@ hr { border-color: var(--line) !important; }
 """
 
 
+# ---------------------------------------------------------------------------
+# Interface
+# ---------------------------------------------------------------------------
+
 def afficher_interface():
     st.set_page_config(page_title="Audit Operator", layout="wide")
 
     if "theme_mode" not in st.session_state:
         st.session_state["theme_mode"] = "light"
+    if "lang" not in st.session_state:
+        st.session_state["lang"] = "fr"
 
     st.markdown(CSS.replace("/*ROOT*/", apply_theme()), unsafe_allow_html=True)
 
     cfg = _cfg()
 
-    st.sidebar.markdown(_h("""
+    st.sidebar.markdown(_h(f"""
     <div>
         <div class="sb-brand">AUDIT OPERATOR</div>
-        <div class="sb-sub">Validation des modèles<br>de VaR et d'Expected Shortfall</div>
+        <div class="sb-sub">{t("sb.tagline")}</div>
         <div class="sb-author">Adam Khazani Ahsaini</div>
     </div>
     """), unsafe_allow_html=True)
 
     st.sidebar.markdown("---")
-    st.sidebar.markdown('<div class="sb-label">Navigation</div>', unsafe_allow_html=True)
+    st.sidebar.markdown(f'<div class="sb-label">{_esc(t("sb.navigation"))}</div>',
+                        unsafe_allow_html=True)
 
+    menu_labels = {
+        "comparative": t("sb.menu.comparative"),
+        "unitaire": t("sb.menu.unitaire"),
+        "config": t("sb.menu.config"),
+    }
     menu = st.sidebar.radio(
-        "Navigation",
-        ["Audit Comparatif", "Audit Unitaire", "Config"],
+        t("sb.navigation"),
+        options=list(menu_labels.keys()),
+        format_func=lambda k: menu_labels[k],
         label_visibility="collapsed",
+        key="menu_choice",
     )
 
     st.sidebar.markdown("---")
 
-    is_dark = st.sidebar.toggle("Thème sombre", value=(st.session_state["theme_mode"] == "dark"))
+    is_dark = st.sidebar.toggle(t("sb.dark"),
+                                value=(st.session_state["theme_mode"] == "dark"))
     if is_dark and st.session_state["theme_mode"] != "dark":
         st.session_state["theme_mode"] = "dark"
         st.rerun()
@@ -1144,29 +1561,33 @@ def afficher_interface():
         st.session_state["theme_mode"] = "light"
         st.rerun()
 
+    is_en = st.sidebar.toggle("English",
+                              value=(st.session_state.get("lang") == "en"))
+    if is_en and st.session_state.get("lang") != "en":
+        st.session_state["lang"] = "en"
+        st.rerun()
+    elif not is_en and st.session_state.get("lang") != "fr":
+        st.session_state["lang"] = "fr"
+        st.rerun()
+
     st.sidebar.markdown("---")
 
     date_fin = cfg["end_date"] or datetime.date.today()
     st.sidebar.markdown(_h(f"""
-    <div class="sb-label">Marché actif</div>
+    <div class="sb-label">{_esc(t("sb.active_market"))}</div>
     <div class="sb-tick">{_esc(cfg['ticker'])}</div>
     <div class="sb-per">{_esc(cfg['start_date'])} → {_esc(date_fin)}</div>
     """), unsafe_allow_html=True)
 
     st.sidebar.markdown("---")
-    st.sidebar.markdown(
-        '<div class="sb-foot">Données : Yahoo Finance<br>'
-        'VaR : Kupiec · Christoffersen · DQ<br>'
-        'ES : McNeil-Frey · Acerbi-Szekely<br>'
-        'Cadre : Bâle / FRTB</div>',
-        unsafe_allow_html=True,
-    )
+    st.sidebar.markdown(f'<div class="sb-foot">{t("sb.footer")}</div>',
+                        unsafe_allow_html=True)
 
-    if menu == "Audit Comparatif":
+    if menu == "comparative":
         page_audit_comparatif()
-    elif menu == "Audit Unitaire":
+    elif menu == "unitaire":
         page_audit_unitaire()
-    elif menu == "Config":
+    elif menu == "config":
         page_config()
 
 
