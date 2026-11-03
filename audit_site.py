@@ -13,10 +13,18 @@ from streamlit.web import cli as stcli
 from main import CONFIG, run_backtest, stock_getter
 
 # ---------------------------------------------------------------------------
-# Internationalisation (FR / EN)
+# Internationalisation (FR / EN / ES / ZH / DE)
 # ---------------------------------------------------------------------------
 
 STANDARD_MODEL_CODES = ("historical", "garch_t", "gjr_skewt")
+
+LANG_OPTIONS = {
+    "fr": "Français",
+    "en": "English",
+    "es": "Español",
+    "zh": "中文",
+    "de": "Deutsch",
+}
 
 TR = {
     "fr": {
@@ -144,6 +152,7 @@ TR = {
         "sb.menu.unitaire": "Audit Unitaire",
         "sb.menu.config": "Config",
         "sb.dark": "Thème sombre",
+        "sb.language": "Langue",
         "sb.active_market": "Marché actif",
         "sb.footer": ("Données : Yahoo Finance<br>"
                       "VaR : Kupiec · Christoffersen · DQ<br>"
@@ -311,6 +320,7 @@ TR = {
         "sb.menu.unitaire": "Unit Audit",
         "sb.menu.config": "Config",
         "sb.dark": "Dark theme",
+        "sb.language": "Language",
         "sb.active_market": "Active market",
         "sb.footer": ("Data: Yahoo Finance<br>"
                       "VaR: Kupiec · Christoffersen · DQ<br>"
@@ -353,6 +363,510 @@ TR = {
         "cfg.alpha_es": "α ES level",
         "cfg.lags_dq": "DQ test lags",
     },
+    "es": {
+        # Models
+        "model.historical": "Histórico (HS)",
+        "model.historical.desc": "Cuantiles empíricos",
+        "model.garch_t": "GARCH-t",
+        "model.garch_t.desc": "Volatilidad condicional · Student-t",
+        "model.gjr_skewt": "GJR-GARCH (Skew-t)",
+        "model.gjr_skewt.desc": "Volatilidad asimétrica · Skew-t",
+        # Metrics
+        "metric.basel_zone_actu": "Zona de Basilea (actual)",
+        "metric.exceptions": "Excepciones VaR",
+        "metric.exc_rate": "Tasa de excepciones (%)",
+        "metric.obs_tested": "Observaciones probadas",
+        "metric.kupiec_pval": "Kupiec POF · valor-p",
+        "metric.christof_cc_pval": "Christoffersen CC · valor-p",
+        "metric.dq_pval": "Cuantil Dinámico · valor-p",
+        "metric.christof_ind_pval": "Christoffersen IND · valor-p",
+        "metric.es_mf_pval": "ES McNeil-Frey · valor-p",
+        "metric.acerbi_z1_stat": "Acerbi-Szekely Z1 · estadístico",
+        "metric.acerbi_z1_pval": "Acerbi-Szekely Z1 · valor-p",
+        "metric.tail_resid_mean": "Media de residuos de cola",
+        "metric.conv_warnings": "Advertencias de convergencia",
+        "metric.exc_2008_crisis": "Excepciones · crisis 2008",
+        # Status
+        "status.pos": "Válido",
+        "status.neg": "Error",
+        "status.warn": "Atención",
+        "status.info": "Info",
+        # Charts
+        "chart.returns": "Rendimientos",
+        "chart.var": "VaR {conf}",
+        "chart.es": "ES (FRTB)",
+        "chart.exceptions": "Excepciones",
+        "chart.var_model": "VaR {conf} · {name}",
+        "chart.unavailable_series": "Series VaR / rendimientos no disponibles para este modelo.",
+        # Headers
+        "header.validation.kicker": "Validación de modelos",
+        "header.comparative.title": "Auditoría comparativa",
+        "header.comparative.subtitle": "Backtesting simultáneo de varios modelos de VaR / ES sobre el mismo instrumento.",
+        "header.unitaire.title": "Auditoría unitaria",
+        "header.unitaire.subtitle": "Backtesting detallado de un modelo: excepciones, pruebas estadísticas, zona de Basilea.",
+        "header.config.kicker": "Configuración",
+        "header.config.title": "Configuración",
+        "header.config.subtitle": "Instrumento, período de análisis y parámetros de backtesting.",
+        # Sections
+        "sec.reference_models": "Modelos de referencia",
+        "sec.reference_models.desc": "Metodologías a comparar",
+        "sec.custom_models": "Modelos personalizados",
+        "sec.custom_models.desc": "Series de riesgo externas",
+        "sec.execution": "Ejecución",
+        "sec.results": "Resultados",
+        "sec.synthesis": "Síntesis",
+        "sec.synthesis.desc": "Mejor modelo por criterio de auditoría",
+        "sec.compared_var": "VaR comparadas",
+        "sec.compared_var.desc": "Umbrales VaR {conf} superpuestos a los rendimientos",
+        "sec.metrics_breakdown": "Desglose de métricas",
+        "sec.metrics_breakdown.desc": "Todas las estadísticas del backtesting",
+        "sec.model_selection": "Selección del modelo",
+        "sec.analysis_period": "Período de análisis",
+        "sec.instrument": "Instrumento",
+        "sec.backtest_params": "Parámetros de backtesting",
+        "sec.backtest_params.desc": "Solo lectura · definidos en main.CONFIG",
+        # UI
+        "ui.include_in_audit": "Incluir en la auditoría",
+        "ui.run_comparative": "Ejecutar auditoría comparativa",
+        "ui.run_unit": "Ejecutar auditoría unitaria",
+        "ui.select_model": "Seleccione el modelo:",
+        "ui.metric": "Métrica",
+        "ui.code": "Código",
+        "ui.parameter": "Parámetro",
+        "ui.value": "Valor",
+        "ui.best_model": "Mejor modelo",
+        "ui.criterion": "Criterio",
+        "ui.test": "Prueba",
+        "ui.indicator": "Indicador",
+        "ui.import_model": "Importar modelo externo",
+        "ui.model_name": "Nombre del modelo",
+        "ui.model_name.ph": "ej. RiskMetrics_2026",
+        "ui.var_series": "A · Serie VaR",
+        "ui.es_series": "B · Serie Expected Shortfall",
+        "ui.vol_series": "C · Serie de volatilidad",
+        "ui.upload_caption": "Formatos aceptados: CSV, XLSX, Parquet · índice = fechas, primera columna = valores.",
+        "ui.save_model": "Guardar modelo",
+        "ui.saved_models.select": "Modelos guardados · seleccionar para auditoría",
+        "ui.saved_models": "Modelos guardados",
+        "ui.external_model_desc": "Modelo externo · VaR / ES / Vol",
+        "ui.remove": "Eliminar",
+        "ui.start_date": "Fecha de inicio (AAAA-MM-DD)",
+        "ui.end_date": "Fecha de fin (AAAA-MM-DD, o None)",
+        "ui.ticker": "Ticker (Yahoo Finance)",
+        "ui.colors_caption": "Verde: H₀ no rechazada (p > 5%) · Rojo: H₀ rechazada (p ≤ 5%).",
+        "ui.valid_period": "Período válido.",
+        # Ribbon
+        "ribbon.instrument": "Instrumento",
+        "ribbon.period": "Período",
+        "ribbon.window": "Ventana",
+        "ribbon.refit": "Refit",
+        "ribbon.alpha_var": "α VaR",
+        "ribbon.alpha_es": "α ES",
+        "ribbon.days": "d",
+        # KPI
+        "kpi.basel": "Zona de Basilea",
+        "kpi.basel.sub": "Semáforo regulatorio actual",
+        "kpi.var_exc": "Excepciones VaR",
+        "kpi.exc_rate": "Tasa de excepciones",
+        "kpi.kupiec": "Kupiec POF · valor-p",
+        "kpi.h0_not_rejected": "H₀ no rechazada",
+        "kpi.h0_rejected": "H₀ rechazada",
+        "kpi.target": "objetivo ≈ {n}",
+        "kpi.varcaption": "Backtesting VaR {conf} & Expected Shortfall",
+        # Synthesis
+        "synth.var_accuracy": "Precisión de la VaR",
+        "synth.exc_indep": "Independencia de las excepciones",
+        "synth.dynamic_quality": "Calidad dinámica",
+        "synth.exc_calibration": "Calibración de la tasa de excepciones",
+        "synth.deviation_target": "Desviación del objetivo",
+        "synth.obs_target": "{n} obs. · objetivo ≈ {t}",
+        "synth.unavailable": "Síntesis automática no disponible para esta selección.",
+        # Sidebar
+        "sb.tagline": "Validación de modelos<br>de VaR y Expected Shortfall",
+        "sb.navigation": "Navegación",
+        "sb.menu.comparative": "Auditoría Comparativa",
+        "sb.menu.unitaire": "Auditoría Unitaria",
+        "sb.menu.config": "Config",
+        "sb.dark": "Tema oscuro",
+        "sb.language": "Idioma",
+        "sb.active_market": "Mercado activo",
+        "sb.footer": ("Datos: Yahoo Finance<br>"
+                      "VaR: Kupiec · Christoffersen · DQ<br>"
+                      "ES: McNeil-Frey · Acerbi-Szekely<br>"
+                      "Marco: Basilea / FRTB"),
+        # Zones
+        "zone.VERTE": "VERDE",
+        "zone.JAUNE": "AMARILLO",
+        "zone.ROUGE": "ROJO",
+        # Errors / progress
+        "err.select_one_model": "Por favor, seleccione al menos un modelo para auditar.",
+        "err.ticker_required": "Por favor, introduzca un ticker.",
+        "err.ticker_not_found": "Ticker no encontrado: «{symbol}». Se conserva el ticker anterior.",
+        "ok.ticker_valid": "Ticker válido: {symbol}",
+        "err.date_format": "Formato inválido, utilice AAAA-MM-DD. Se conservan las fechas anteriores.",
+        "err.date_order": "La fecha de fin debe ser posterior a la fecha de inicio. Se conservan las fechas anteriores.",
+        "err.period_too_short": "Período demasiado corto: ~{n} días bursátiles para una ventana de {w}. Se conservan las fechas anteriores.",
+        "err.download_failed": "Descarga de datos imposible: {e}",
+        "err.period_too_short_obs": "Período demasiado corto: {n} observaciones para una ventana de {w} (mínimo {m}).",
+        "progress.computing": "Calculando el modelo «{name}»",
+        "progress.done": "Modelo «{name}» terminado",
+        # Upload
+        "upload.empty": "{kind}: archivo vacío.",
+        "upload.bad_format": "{kind}: formato no reconocido (se espera una sola columna).",
+        "upload.dup_dates": "{kind}: fechas duplicadas en el índice.",
+        "upload.all_nan": "{kind}: serie completamente NaN.",
+        "upload.non_finite": "{kind}: contiene valores no finitos.",
+        # Custom
+        "custom.name_required": "Por favor, introduzca un nombre de modelo.",
+        "custom.name_exists": "Ya existe un modelo con este nombre.",
+        "custom.all_required": "Por favor, importe las tres series requeridas.",
+        "custom.saved": "Modelo «{name}» guardado.",
+        "custom.var_kind": "VaR",
+        "custom.es_kind": "ES",
+        "custom.vol_kind": "Volatilidad",
+        # Config params
+        "cfg.window_size": "Ventana de estimación (días)",
+        "cfg.refit_freq": "Frecuencia de reestimación (días)",
+        "cfg.alpha_var": "Nivel α VaR",
+        "cfg.alpha_es": "Nivel α ES",
+        "cfg.lags_dq": "Rezagos de la prueba DQ",
+    },
+    "zh": {
+        # Models
+        "model.historical": "历史模拟法 (HS)",
+        "model.historical.desc": "经验分位数",
+        "model.garch_t": "GARCH-t",
+        "model.garch_t.desc": "条件波动率 · Student-t",
+        "model.gjr_skewt": "GJR-GARCH (Skew-t)",
+        "model.gjr_skewt.desc": "非对称波动率 · Skew-t",
+        # Metrics
+        "metric.basel_zone_actu": "巴塞尔区域 (当前)",
+        "metric.exceptions": "VaR 例外",
+        "metric.exc_rate": "例外率 (%)",
+        "metric.obs_tested": "测试观测数",
+        "metric.kupiec_pval": "Kupiec POF · p 值",
+        "metric.christof_cc_pval": "Christoffersen CC · p 值",
+        "metric.dq_pval": "动态分位数 · p 值",
+        "metric.christof_ind_pval": "Christoffersen IND · p 值",
+        "metric.es_mf_pval": "ES McNeil-Frey · p 值",
+        "metric.acerbi_z1_stat": "Acerbi-Szekely Z1 · 统计量",
+        "metric.acerbi_z1_pval": "Acerbi-Szekely Z1 · p 值",
+        "metric.tail_resid_mean": "尾部残差均值",
+        "metric.conv_warnings": "收敛警告",
+        "metric.exc_2008_crisis": "例外 · 2008 年危机",
+        # Status
+        "status.pos": "有效",
+        "status.neg": "错误",
+        "status.warn": "警告",
+        "status.info": "信息",
+        # Charts
+        "chart.returns": "收益率",
+        "chart.var": "VaR {conf}",
+        "chart.es": "ES (FRTB)",
+        "chart.exceptions": "例外",
+        "chart.var_model": "VaR {conf} · {name}",
+        "chart.unavailable_series": "此模型的 VaR / 收益率序列不可用。",
+        # Headers
+        "header.validation.kicker": "模型验证",
+        "header.comparative.title": "比较审计",
+        "header.comparative.subtitle": "在同一工具上同时回测多个 VaR / ES 模型。",
+        "header.unitaire.title": "单元审计",
+        "header.unitaire.subtitle": "单一模型的详细回测：例外、统计检验、巴塞尔区域。",
+        "header.config.kicker": "设置",
+        "header.config.title": "配置",
+        "header.config.subtitle": "工具、分析期间和回测参数。",
+        # Sections
+        "sec.reference_models": "参考模型",
+        "sec.reference_models.desc": "待比较的方法",
+        "sec.custom_models": "自定义模型",
+        "sec.custom_models.desc": "外部风险序列",
+        "sec.execution": "运行",
+        "sec.results": "结果",
+        "sec.synthesis": "摘要",
+        "sec.synthesis.desc": "按审计标准的最佳模型",
+        "sec.compared_var": "VaR 比较",
+        "sec.compared_var.desc": "VaR {conf} 阈值与收益率叠加",
+        "sec.metrics_breakdown": "指标分解",
+        "sec.metrics_breakdown.desc": "所有回测统计量",
+        "sec.model_selection": "模型选择",
+        "sec.analysis_period": "分析期间",
+        "sec.instrument": "工具",
+        "sec.backtest_params": "回测参数",
+        "sec.backtest_params.desc": "只读 · 定义于 main.CONFIG",
+        # UI
+        "ui.include_in_audit": "纳入审计",
+        "ui.run_comparative": "运行比较审计",
+        "ui.run_unit": "运行单元审计",
+        "ui.select_model": "选择模型：",
+        "ui.metric": "指标",
+        "ui.code": "代码",
+        "ui.parameter": "参数",
+        "ui.value": "值",
+        "ui.best_model": "最佳模型",
+        "ui.criterion": "标准",
+        "ui.test": "检验",
+        "ui.indicator": "指标",
+        "ui.import_model": "导入外部模型",
+        "ui.model_name": "模型名称",
+        "ui.model_name.ph": "例如 RiskMetrics_2026",
+        "ui.var_series": "A · VaR 序列",
+        "ui.es_series": "B · Expected Shortfall 序列",
+        "ui.vol_series": "C · 波动率序列",
+        "ui.upload_caption": "接受的格式：CSV、XLSX、Parquet · 索引 = 日期，第一列 = 值。",
+        "ui.save_model": "保存模型",
+        "ui.saved_models.select": "已保存的模型 · 选择以进行审计",
+        "ui.saved_models": "已保存的模型",
+        "ui.external_model_desc": "外部模型 · VaR / ES / Vol",
+        "ui.remove": "移除",
+        "ui.start_date": "开始日期 (YYYY-MM-DD)",
+        "ui.end_date": "结束日期 (YYYY-MM-DD，或 None)",
+        "ui.ticker": "股票代码 (Yahoo Finance)",
+        "ui.colors_caption": "绿色：H₀ 未被拒绝 (p > 5%) · 红色：H₀ 被拒绝 (p ≤ 5%)。",
+        "ui.valid_period": "有效期间。",
+        # Ribbon
+        "ribbon.instrument": "工具",
+        "ribbon.period": "期间",
+        "ribbon.window": "窗口",
+        "ribbon.refit": "重拟合",
+        "ribbon.alpha_var": "α VaR",
+        "ribbon.alpha_es": "α ES",
+        "ribbon.days": "天",
+        # KPI
+        "kpi.basel": "巴塞尔区域",
+        "kpi.basel.sub": "当前监管交通灯",
+        "kpi.var_exc": "VaR 例外",
+        "kpi.exc_rate": "例外率",
+        "kpi.kupiec": "Kupiec POF · p 值",
+        "kpi.h0_not_rejected": "H₀ 未被拒绝",
+        "kpi.h0_rejected": "H₀ 被拒绝",
+        "kpi.target": "目标 ≈ {n}",
+        "kpi.varcaption": "回测 VaR {conf} & Expected Shortfall",
+        # Synthesis
+        "synth.var_accuracy": "VaR 准确性",
+        "synth.exc_indep": "例外独立性",
+        "synth.dynamic_quality": "动态质量",
+        "synth.exc_calibration": "例外率校准",
+        "synth.deviation_target": "与目标的偏差",
+        "synth.obs_target": "{n} 个观测 · 目标 ≈ {t}",
+        "synth.unavailable": "此选择无法自动生成摘要。",
+        # Sidebar
+        "sb.tagline": "VaR 与 Expected Shortfall<br>模型验证",
+        "sb.navigation": "导航",
+        "sb.menu.comparative": "比较审计",
+        "sb.menu.unitaire": "单元审计",
+        "sb.menu.config": "配置",
+        "sb.dark": "深色主题",
+        "sb.language": "语言",
+        "sb.active_market": "活跃市场",
+        "sb.footer": ("数据：Yahoo Finance<br>"
+                      "VaR：Kupiec · Christoffersen · DQ<br>"
+                      "ES：McNeil-Frey · Acerbi-Szekely<br>"
+                      "框架：巴塞尔 / FRTB"),
+        # Zones
+        "zone.VERTE": "绿色",
+        "zone.JAUNE": "黄色",
+        "zone.ROUGE": "红色",
+        # Errors / progress
+        "err.select_one_model": "请选择至少一个要审计的模型。",
+        "err.ticker_required": "请输入股票代码。",
+        "err.ticker_not_found": "未找到股票代码：\"{symbol}\"。保留之前的代码。",
+        "ok.ticker_valid": "有效代码：{symbol}",
+        "err.date_format": "格式无效，请使用 YYYY-MM-DD。保留之前的日期。",
+        "err.date_order": "结束日期必须晚于开始日期。保留之前的日期。",
+        "err.period_too_short": "期间太短：约 {n} 个交易日，窗口为 {w} 天。保留之前的日期。",
+        "err.download_failed": "数据下载失败：{e}",
+        "err.period_too_short_obs": "期间太短：{n} 个观测，窗口为 {w} 天（最小 {m}）。",
+        "progress.computing": "正在计算模型「{name}」",
+        "progress.done": "模型「{name}」完成",
+        # Upload
+        "upload.empty": "{kind}：文件为空。",
+        "upload.bad_format": "{kind}：格式无法识别（应为一列）。",
+        "upload.dup_dates": "{kind}：索引中存在重复日期。",
+        "upload.all_nan": "{kind}：序列全为 NaN。",
+        "upload.non_finite": "{kind}：包含非有限值。",
+        # Custom
+        "custom.name_required": "请输入模型名称。",
+        "custom.name_exists": "已存在同名模型。",
+        "custom.all_required": "请导入所有三个必需的序列。",
+        "custom.saved": "模型「{name}」已保存。",
+        "custom.var_kind": "VaR",
+        "custom.es_kind": "ES",
+        "custom.vol_kind": "波动率",
+        # Config params
+        "cfg.window_size": "估计窗口（天）",
+        "cfg.refit_freq": "重拟合频率（天）",
+        "cfg.alpha_var": "α VaR 水平",
+        "cfg.alpha_es": "α ES 水平",
+        "cfg.lags_dq": "DQ 检验滞后",
+    },
+    "de": {
+        # Models
+        "model.historical": "Historisch (HS)",
+        "model.historical.desc": "Empirische Quantile",
+        "model.garch_t": "GARCH-t",
+        "model.garch_t.desc": "Bedingte Volatilität · Student-t",
+        "model.gjr_skewt": "GJR-GARCH (Skew-t)",
+        "model.gjr_skewt.desc": "Asymmetrische Volatilität · Skew-t",
+        # Metrics
+        "metric.basel_zone_actu": "Basel-Zone (aktuell)",
+        "metric.exceptions": "VaR-Ausnahmen",
+        "metric.exc_rate": "Ausnahmenrate (%)",
+        "metric.obs_tested": "Getestete Beobachtungen",
+        "metric.kupiec_pval": "Kupiec POF · p-Wert",
+        "metric.christof_cc_pval": "Christoffersen CC · p-Wert",
+        "metric.dq_pval": "Dynamisches Quantil · p-Wert",
+        "metric.christof_ind_pval": "Christoffersen IND · p-Wert",
+        "metric.es_mf_pval": "ES McNeil-Frey · p-Wert",
+        "metric.acerbi_z1_stat": "Acerbi-Szekely Z1 · Statistik",
+        "metric.acerbi_z1_pval": "Acerbi-Szekely Z1 · p-Wert",
+        "metric.tail_resid_mean": "Mittlere Tail-Residuen",
+        "metric.conv_warnings": "Konvergenzwarnungen",
+        "metric.exc_2008_crisis": "Ausnahmen · Krise 2008",
+        # Status
+        "status.pos": "Gültig",
+        "status.neg": "Fehler",
+        "status.warn": "Achtung",
+        "status.info": "Info",
+        # Charts
+        "chart.returns": "Renditen",
+        "chart.var": "VaR {conf}",
+        "chart.es": "ES (FRTB)",
+        "chart.exceptions": "Ausnahmen",
+        "chart.var_model": "VaR {conf} · {name}",
+        "chart.unavailable_series": "VaR-/Renditereihen für dieses Modell nicht verfügbar.",
+        # Headers
+        "header.validation.kicker": "Modellvalidierung",
+        "header.comparative.title": "Vergleichendes Audit",
+        "header.comparative.subtitle": "Simultanes Backtesting mehrerer VaR-/ES-Modelle auf demselben Instrument.",
+        "header.unitaire.title": "Einzel-Audit",
+        "header.unitaire.subtitle": "Detailliertes Backtesting eines Modells: Ausnahmen, statistische Tests, Basel-Zone.",
+        "header.config.kicker": "Einstellungen",
+        "header.config.title": "Konfiguration",
+        "header.config.subtitle": "Instrument, Analysezeitraum und Backtesting-Parameter.",
+        # Sections
+        "sec.reference_models": "Referenzmodelle",
+        "sec.reference_models.desc": "Zu vergleichende Methoden",
+        "sec.custom_models": "Benutzerdefinierte Modelle",
+        "sec.custom_models.desc": "Externe Risikoreihen",
+        "sec.execution": "Ausführung",
+        "sec.results": "Ergebnisse",
+        "sec.synthesis": "Zusammenfassung",
+        "sec.synthesis.desc": "Bestes Modell pro Auditkriterium",
+        "sec.compared_var": "Verglichene VaR",
+        "sec.compared_var.desc": "VaR-{conf}-Schwellen überlagert auf Renditen",
+        "sec.metrics_breakdown": "Metrik-Aufschlüsselung",
+        "sec.metrics_breakdown.desc": "Alle Backtesting-Statistiken",
+        "sec.model_selection": "Modellauswahl",
+        "sec.analysis_period": "Analysezeitraum",
+        "sec.instrument": "Instrument",
+        "sec.backtest_params": "Backtesting-Parameter",
+        "sec.backtest_params.desc": "Schreibgeschützt · definiert in main.CONFIG",
+        # UI
+        "ui.include_in_audit": "In Audit einbeziehen",
+        "ui.run_comparative": "Vergleichendes Audit starten",
+        "ui.run_unit": "Einzel-Audit starten",
+        "ui.select_model": "Modell auswählen:",
+        "ui.metric": "Metrik",
+        "ui.code": "Code",
+        "ui.parameter": "Parameter",
+        "ui.value": "Wert",
+        "ui.best_model": "Bestes Modell",
+        "ui.criterion": "Kriterium",
+        "ui.test": "Test",
+        "ui.indicator": "Indikator",
+        "ui.import_model": "Externes Modell importieren",
+        "ui.model_name": "Modellname",
+        "ui.model_name.ph": "z. B. RiskMetrics_2026",
+        "ui.var_series": "A · VaR-Reihe",
+        "ui.es_series": "B · Expected-Shortfall-Reihe",
+        "ui.vol_series": "C · Volatilitätsreihe",
+        "ui.upload_caption": "Akzeptierte Formate: CSV, XLSX, Parquet · Index = Datum, erste Spalte = Werte.",
+        "ui.save_model": "Modell speichern",
+        "ui.saved_models.select": "Gespeicherte Modelle · für Audit auswählen",
+        "ui.saved_models": "Gespeicherte Modelle",
+        "ui.external_model_desc": "Externes Modell · VaR / ES / Vol",
+        "ui.remove": "Entfernen",
+        "ui.start_date": "Startdatum (JJJJ-MM-TT)",
+        "ui.end_date": "Enddatum (JJJJ-MM-TT oder None)",
+        "ui.ticker": "Ticker (Yahoo Finance)",
+        "ui.colors_caption": "Grün: H₀ nicht abgelehnt (p > 5 %) · Rot: H₀ abgelehnt (p ≤ 5 %).",
+        "ui.valid_period": "Gültiger Zeitraum.",
+        # Ribbon
+        "ribbon.instrument": "Instrument",
+        "ribbon.period": "Zeitraum",
+        "ribbon.window": "Fenster",
+        "ribbon.refit": "Refit",
+        "ribbon.alpha_var": "α VaR",
+        "ribbon.alpha_es": "α ES",
+        "ribbon.days": "T",
+        # KPI
+        "kpi.basel": "Basel-Zone",
+        "kpi.basel.sub": "Aktuelle regulatorische Ampel",
+        "kpi.var_exc": "VaR-Ausnahmen",
+        "kpi.exc_rate": "Ausnahmenrate",
+        "kpi.kupiec": "Kupiec POF · p-Wert",
+        "kpi.h0_not_rejected": "H₀ nicht abgelehnt",
+        "kpi.h0_rejected": "H₀ abgelehnt",
+        "kpi.target": "Ziel ≈ {n}",
+        "kpi.varcaption": "Backtesting VaR {conf} & Expected Shortfall",
+        # Synthesis
+        "synth.var_accuracy": "VaR-Genauigkeit",
+        "synth.exc_indep": "Unabhängigkeit der Ausnahmen",
+        "synth.dynamic_quality": "Dynamische Qualität",
+        "synth.exc_calibration": "Kalibrierung der Ausnahmenrate",
+        "synth.deviation_target": "Abweichung vom Ziel",
+        "synth.obs_target": "{n} Beob. · Ziel ≈ {t}",
+        "synth.unavailable": "Automatische Zusammenfassung für diese Auswahl nicht verfügbar.",
+        # Sidebar
+        "sb.tagline": "Modellvalidierung<br>von VaR und Expected Shortfall",
+        "sb.navigation": "Navigation",
+        "sb.menu.comparative": "Vergleichendes Audit",
+        "sb.menu.unitaire": "Einzel-Audit",
+        "sb.menu.config": "Konfig",
+        "sb.dark": "Dunkles Design",
+        "sb.language": "Sprache",
+        "sb.active_market": "Aktiver Markt",
+        "sb.footer": ("Daten: Yahoo Finance<br>"
+                      "VaR: Kupiec · Christoffersen · DQ<br>"
+                      "ES: McNeil-Frey · Acerbi-Szekely<br>"
+                      "Rahmen: Basel / FRTB"),
+        # Zones
+        "zone.VERTE": "GRÜN",
+        "zone.JAUNE": "GELB",
+        "zone.ROUGE": "ROT",
+        # Errors / progress
+        "err.select_one_model": "Bitte wählen Sie mindestens ein Modell zum Auditieren aus.",
+        "err.ticker_required": "Bitte geben Sie einen Ticker ein.",
+        "err.ticker_not_found": "Ticker nicht gefunden: „{symbol}“. Vorheriger Ticker beibehalten.",
+        "ok.ticker_valid": "Gültiger Ticker: {symbol}",
+        "err.date_format": "Ungültiges Format, verwenden Sie JJJJ-MM-TT. Vorherige Daten beibehalten.",
+        "err.date_order": "Enddatum muss nach dem Startdatum liegen. Vorherige Daten beibehalten.",
+        "err.period_too_short": "Zeitraum zu kurz: ~{n} Handelstage für ein {w}-Tage-Fenster. Vorherige Daten beibehalten.",
+        "err.download_failed": "Daten-Download fehlgeschlagen: {e}",
+        "err.period_too_short_obs": "Zeitraum zu kurz: {n} Beobachtungen für ein {w}-Tage-Fenster (Minimum {m}).",
+        "progress.computing": "Berechne Modell „{name}“",
+        "progress.done": "Modell „{name}“ fertig",
+        # Upload
+        "upload.empty": "{kind}: leere Datei.",
+        "upload.bad_format": "{kind}: Format nicht erkannt (eine Spalte erwartet).",
+        "upload.dup_dates": "{kind}: doppelte Daten im Index.",
+        "upload.all_nan": "{kind}: Reihe vollständig NaN.",
+        "upload.non_finite": "{kind}: enthält nicht-finite Werte.",
+        # Custom
+        "custom.name_required": "Bitte geben Sie einen Modellnamen ein.",
+        "custom.name_exists": "Ein Modell mit diesem Namen existiert bereits.",
+        "custom.all_required": "Bitte importieren Sie alle drei erforderlichen Reihen.",
+        "custom.saved": "Modell „{name}“ gespeichert.",
+        "custom.var_kind": "VaR",
+        "custom.es_kind": "ES",
+        "custom.vol_kind": "Volatilität",
+        # Config params
+        "cfg.window_size": "Schätzfenster (Tage)",
+        "cfg.refit_freq": "Refit-Häufigkeit (Tage)",
+        "cfg.alpha_var": "α-VaR-Niveau",
+        "cfg.alpha_es": "α-ES-Niveau",
+        "cfg.lags_dq": "DQ-Test-Lags",
+    },
 }
 
 
@@ -373,7 +887,8 @@ def t(key, **kw):
 
 def _metric_label(key):
     lang = st.session_state.get("lang", "fr")
-    label = TR[lang].get(f"metric.{key}") or TR["fr"].get(f"metric.{key}")
+    d = TR.get(lang) or TR["fr"]
+    label = d.get(f"metric.{key}") or TR["fr"].get(f"metric.{key}")
     if label is None:
         return str(key).replace("_", " ").capitalize()
     return label
@@ -1561,13 +2076,21 @@ def afficher_interface():
         st.session_state["theme_mode"] = "light"
         st.rerun()
 
-    is_en = st.sidebar.toggle("English Version",
-                              value=(st.session_state.get("lang") == "en"))
-    if is_en and st.session_state.get("lang") != "en":
-        st.session_state["lang"] = "en"
-        st.rerun()
-    elif not is_en and st.session_state.get("lang") != "fr":
+    # --- Language selector (FR by default, EN / ES / ZH / DE available) ---
+    current_lang = st.session_state.get("lang", "fr")
+    if current_lang not in LANG_OPTIONS:
+        current_lang = "fr"
         st.session_state["lang"] = "fr"
+
+    selected_lang = st.sidebar.selectbox(
+        t("sb.language"),
+        options=list(LANG_OPTIONS.keys()),
+        format_func=lambda k: LANG_OPTIONS[k],
+        index=list(LANG_OPTIONS.keys()).index(current_lang),
+        key="lang_select",
+    )
+    if selected_lang != current_lang:
+        st.session_state["lang"] = selected_lang
         st.rerun()
 
     st.sidebar.markdown("---")
